@@ -106,15 +106,28 @@ unsafe fn focused_window() -> Result<AxElement, String> {
 fn main_work_area() -> (f64, f64, f64, f64) {
     unsafe {
         let screen = NSScreen::mainScreen(nil);
-        let full: NSRect = screen.frame();
         let visible: NSRect = screen.visibleFrame();
 
-        // NSScreen uses a bottom-left origin (y up); the Accessibility API uses a
-        // top-left origin (y down). Flip the visible frame using the screen's full height.
+        // Cocoa uses a bottom-left origin (y up) with (0,0) at the *primary* screen's
+        // bottom-left; the Accessibility API uses a top-left origin (y down) with (0,0)
+        // at the primary screen's top-left. The flip must therefore use the PRIMARY
+        // screen's height — using the focused screen's height breaks on multi-monitor
+        // setups where a secondary display sits at a negative/large offset.
         let x = visible.origin.x;
-        let y = full.size.height - (visible.origin.y + visible.size.height);
+        let y = primary_screen_height() - (visible.origin.y + visible.size.height);
         (x, y, visible.size.width, visible.size.height)
     }
+}
+
+/// Height of the primary (menu-bar) screen — the origin of the global AX coordinate space.
+unsafe fn primary_screen_height() -> f64 {
+    let screens: id = msg_send![class!(NSScreen), screens];
+    let primary: id = msg_send![screens, firstObject];
+    if primary == nil {
+        return 0.0;
+    }
+    let frame: NSRect = msg_send![primary, frame];
+    frame.size.height
 }
 
 /// Build an `AXValue` from a raw pointer and set it on `window`'s `attr`.
@@ -141,6 +154,21 @@ unsafe fn set_axvalue(
     }
 }
 
+/// Move + resize a window to `origin` / `size`.
+///
+/// macOS clamps a move or resize to keep the window on screen, so a naive
+/// position-then-size lands wrong when the window starts larger than the target
+/// (e.g. a full-height window sent to the bottom half gets shoved back up to the top).
+/// Setting size, then position, then size again is the robust recipe (as Rectangle does).
+unsafe fn set_frame(window: AXUIElementRef, origin: CGPoint, size: CGSize) -> Result<(), String> {
+    let size_ptr = &size as *const CGSize as *const c_void;
+    let origin_ptr = &origin as *const CGPoint as *const c_void;
+    set_axvalue(window, kAXSizeAttribute, kAXValueTypeCGSize, size_ptr)?;
+    set_axvalue(window, kAXPositionAttribute, kAXValueTypeCGPoint, origin_ptr)?;
+    set_axvalue(window, kAXSizeAttribute, kAXValueTypeCGSize, size_ptr)?;
+    Ok(())
+}
+
 /// Snap the currently focused window to the given half of the main display.
 pub fn snap(half: Half) -> Result<(), String> {
     if !ensure_trusted() {
@@ -157,18 +185,7 @@ pub fn snap(half: Half) -> Result<(), String> {
         let origin = CGPoint::new(wx + fx * ww, wy + fy * wh);
         let size = CGSize::new(fw * ww, fh * wh);
 
-        set_axvalue(
-            window.0,
-            kAXPositionAttribute,
-            kAXValueTypeCGPoint,
-            &origin as *const CGPoint as *const c_void,
-        )?;
-        set_axvalue(
-            window.0,
-            kAXSizeAttribute,
-            kAXValueTypeCGSize,
-            &size as *const CGSize as *const c_void,
-        )?;
+        set_frame(window.0, origin, size)?;
     }
 
     Ok(())
