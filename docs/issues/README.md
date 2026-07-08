@@ -64,4 +64,4 @@ Move an issue's box as it progresses. `☐` not started · `◐` in progress · 
 - System: ☑ 020 · ☑ 021 · ☑ 022 · ☑ 023 · ☑ 024
 - Windows: ☑ 025 · ☑ 026 · ☑ 027
 - Frontend: ☑ 028 · ☑ 029 · ☑ 030
-- Packaging: ☐ 031
+- Packaging: ☑ 031

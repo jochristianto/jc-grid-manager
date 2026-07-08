@@ -8,7 +8,7 @@
 | **Blocks** | — |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §2, §3, §5.6, §9 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -68,22 +68,60 @@ Windows target(s) you shipped and any activation-policy changes); do NOT git com
 commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 22:34 WIB
+- **Finished:** 2026-07-08 22:44 WIB
+- **Duration:** ~10m hands-on (incl. a full macOS release bundle build)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Configured the Tauri bundler to produce unsigned installers, made the app a true tray-only utility
+(no dock/taskbar icon, close-to-hide), wrote install docs, and confirmed no OTA.
+
+**What changed**
+- **`tauri.conf.json`**:
+  - `productName` → **"JC Grid Manager"** (proper display name; identifier unchanged, so the
+    `tccutil` command in 030/install docs still matches `com.jochristianto.jcgridmanager`).
+  - `bundle.targets` → explicit **`["app", "dmg", "nsis"]`** (macOS `.dmg`; Windows **NSIS `.exe`**
+    per the recommendation — not WiX MSI). Icons/version already present.
+  - Main window: title "JC Grid Manager" + **`skipTaskbar: true`** (no Windows taskbar button).
+- **`lib.rs`** (tray-only behavior, issue 031):
+  - macOS **accessory activation policy** (`set_activation_policy(ActivationPolicy::Accessory)`,
+    macOS-gated) → **no dock icon**.
+  - **Close-to-hide**: a `CloseRequested` handler on the main window calls `prevent_close()` +
+    `hide()`, so closing the settings window leaves the app running in the tray (Quit lives in the
+    tray menu) instead of terminating.
+- **`docs/install.md`** — download, the macOS Gatekeeper ("unidentified developer" → right-click →
+  Open) and Windows SmartScreen ("More info → Run anyway") bypasses, the Accessibility grant +
+  unsigned-app **stale-grant / `tccutil reset`** caveat, tray-only notes, and "no auto-update".
+- **No updater**: confirmed `tauri-plugin-updater` is absent and no updater config is present.
+
+**Key decisions / deviations — please confirm**
+- **Windows target = NSIS `.exe` only** (not MSI), per the issue's recommendation for a
+  direct-download personal tool. If you want the corporate-friendly `.msi` too, add `"msi"` to
+  `bundle.targets`. **Confirm the NSIS-vs-MSI choice.**
+- Kept the window `visible` at launch (so 030's onboarding can show on first run). A "hide until
+  the tray/onboarding needs it" refinement is a possible follow-up spanning 024/028/030; out of
+  scope for packaging.
+
+**Verification**
+- macOS backend compiles + `cargo clippy` clean with the activation-policy / close-to-hide code.
+- **Ran a full `pnpm tauri build` on macOS** → success (release build 21.6s + bundle): produced
+  `JC Grid Manager.app` and **`JC Grid Manager_0.1.0_aarch64.dmg`** (~3.4 MB), unsigned, with no
+  signing/notarization prompts. Confirms the bundle config (targets, product name, icons) is valid.
+- **Not run here (needs a Windows machine):** the NSIS `.exe` build + install, SmartScreen bypass,
+  and tray-only behavior on Windows. And on both OSes, a clean-machine install + launch smoke.
+  Flagged for the user.
 
 ## Suggested commit message
 
 ```
-build: package unsigned .dmg and Windows installer, tray-only
+build: package unsigned .dmg + NSIS installer, tray-only
 
-Configure the Tauri bundler for a .dmg and an NSIS .exe (unsigned, v1), verify
-tray-only operation with no dock/taskbar icon, and document the Gatekeeper /
-SmartScreen bypass and macOS Accessibility caveat. No OTA.
+Set explicit bundle targets (app/dmg/nsis), a proper productName, and skipTaskbar.
+Make the app tray-only: macOS accessory activation (no dock icon) and close-to-hide
+so closing the settings window keeps it running in the tray. Add docs/install.md
+covering the Gatekeeper / SmartScreen bypass and the macOS Accessibility (stale
+grant / tccutil reset) caveat. No updater/OTA. macOS .dmg build verified.
 ```

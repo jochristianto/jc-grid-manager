@@ -146,6 +146,22 @@ pub fn run() {
             // Menu-bar / system-tray icon with the full §4 menu (issue 024).
             tray::setup(app.handle())?;
 
+            // Tray-only utility (issue 031): hide the macOS dock icon (the Windows taskbar button
+            // is skipped via tauri.conf `skipTaskbar`), and make closing the settings window hide
+            // it so the app keeps running in the tray instead of quitting.
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            if let Some(window) = app.get_webview_window("main") {
+                let win = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win.hide();
+                    }
+                });
+            }
+
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "jc-grid-manager",
+  "productName": "JC Grid Manager",
   "version": "0.1.0",
   "identifier": "com.jochristianto.jcgridmanager",
   "build": {
@@ -13,9 +13,10 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "jc-grid-manager",
+        "title": "JC Grid Manager",
         "width": 800,
-        "height": 600
+        "height": 600,
+        "skipTaskbar": true
       }
     ],
     "security": {
@@ -24,7 +25,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app", "dmg", "nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
