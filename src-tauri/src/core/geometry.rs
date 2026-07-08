@@ -89,6 +89,10 @@ pub fn display_for(window: Rect, displays: &[Rect]) -> Rect {
     displays[best]
 }
 
+/// Default factor for Almost Maximize (idea.md §4): fill this fraction of the work area,
+/// centered. Config hook — issue 020 makes it a user setting (`almost_maximize_factor`).
+pub const ALMOST_MAXIMIZE_FACTOR: f64 = 0.9;
+
 /// The geometry table: the absolute target rect for `action` at cycle `step`, for a window
 /// currently at `_current` on the display with work area `work` (`_displays` carries all
 /// display work areas for cross-display moves). `None` means the action's geometry isn't
@@ -123,6 +127,11 @@ pub fn target_for(
         BottomRight => Some(fraction_to_rect(work, (0.5, 0.5, 0.5, 0.5))),
         // Maximize — fill the work area, not native fullscreen (issue 011).
         Maximize => Some(fraction_to_rect(work, (0.0, 0.0, 1.0, 1.0))),
+        // Almost Maximize — centered, filling ALMOST_MAXIMIZE_FACTOR of the work area (012).
+        AlmostMaximize => {
+            let f = ALMOST_MAXIMIZE_FACTOR;
+            Some(fraction_to_rect(work, ((1.0 - f) / 2.0, (1.0 - f) / 2.0, f, f)))
+        }
         _ => None,
     }
 }
@@ -231,10 +240,15 @@ mod tests {
     }
 
     #[test]
-    fn target_for_unimplemented_action_is_none() {
+    fn target_for_almost_maximize_is_centered() {
+        // Default factor 0.9 → 5% margins; general form ((1-f)/2,(1-f)/2,f,f). Compared with
+        // tolerance because 0.9 is not exactly representable in f64.
         let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
-        // AlmostMaximize stays menu-only-unimplemented until issue 012.
-        assert_eq!(target_for(Action::AlmostMaximize, 0, Rect::ZERO, work, &[]), None);
+        let got = target_for(Action::AlmostMaximize, 0, Rect::ZERO, work, &[]).unwrap();
+        assert!((got.x - 50.0).abs() < 1e-6, "x={}", got.x);
+        assert!((got.y - 40.0).abs() < 1e-6, "y={}", got.y);
+        assert!((got.w - 900.0).abs() < 1e-6, "w={}", got.w);
+        assert!((got.h - 720.0).abs() < 1e-6, "h={}", got.h);
     }
 
     #[test]

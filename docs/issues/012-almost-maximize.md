@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | none (menu-only; user may bind) |
 | **Source** | `docs/idea.md` §4 (Sizing → Almost Maximize) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -62,13 +62,19 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:35 WIB
+- **Finished:** 2026-07-08 18:37 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added `AlmostMaximize` — centered, filling `ALMOST_MAXIMIZE_FACTOR` (default 0.9) of the work
+area via the general form `((1-f)/2, (1-f)/2, f, f)`. The factor is a single named `pub const` in
+`core/geometry.rs` — the hook for issue 020 to expose it as `almost_maximize_factor`. Menu-only
+(no default bind). Unit test asserts the default-0.9 rect. (A second-factor test waits on 020
+parameterizing `target_for`; the const path is tested now.) Also replaced the transitional
+"unimplemented → None" geometry test — the state machine's None handling is covered in `state.rs`.
+`cargo test` → 35 pass.
 
 ## Suggested commit message
 
