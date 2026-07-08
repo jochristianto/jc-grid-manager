@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | First Two Thirds `⌃⌥E`, Last Two Thirds `⌃⌥T` |
 | **Source** | `docs/idea.md` §4 (Thirds) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -56,13 +56,15 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:28 WIB
+- **Finished:** 2026-07-08 18:30 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added two `target_for` arms: FirstTwoThirds `(0,0,2/3,1)`, LastTwoThirds `(1/3,0,2/3,1)` —
+full-height two-thirds columns. Binds `⌃⌥E/T` (from 004) now functional; their edges tile with
+the single thirds (008). `cargo test` → 33 pass.
 
 ## Suggested commit message
 

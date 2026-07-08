@@ -113,6 +113,9 @@ pub fn target_for(
         FirstThird => Some(fraction_to_rect(work, (0.0, 0.0, 1.0 / 3.0, 1.0))),
         CenterThird => Some(fraction_to_rect(work, (1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0))),
         LastThird => Some(fraction_to_rect(work, (2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0))),
+        // Two-thirds — full-height columns, left/right anchored (issue 009).
+        FirstTwoThirds => Some(fraction_to_rect(work, (0.0, 0.0, 2.0 / 3.0, 1.0))),
+        LastTwoThirds => Some(fraction_to_rect(work, (1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0))),
         _ => None,
     }
 }
@@ -234,5 +237,13 @@ mod tests {
         assert_eq!(f(Action::FirstThird), Rect::new(0.0, 0.0, 300.0, 600.0));
         assert_eq!(f(Action::CenterThird), Rect::new(300.0, 0.0, 300.0, 600.0));
         assert_eq!(f(Action::LastThird), Rect::new(600.0, 0.0, 300.0, 600.0));
+    }
+
+    #[test]
+    fn target_for_two_thirds() {
+        let work = Rect::new(0.0, 0.0, 900.0, 600.0);
+        let f = |a| target_for(a, 0, Rect::ZERO, work, &[]).unwrap();
+        assert_eq!(f(Action::FirstTwoThirds), Rect::new(0.0, 0.0, 600.0, 600.0));
+        assert_eq!(f(Action::LastTwoThirds), Rect::new(300.0, 0.0, 600.0, 600.0));
     }
 }
