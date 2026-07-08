@@ -14,6 +14,9 @@ use crate::core::state::SnapState;
 #[cfg(target_os = "macos")]
 mod macos;
 
+#[cfg(target_os = "windows")]
+mod windows;
+
 /// Identity of the application that owns a window — the ignore-app list keys on this (idea.md §4).
 #[derive(Debug, Clone, Default)]
 pub struct WindowIdentity {
@@ -76,7 +79,12 @@ fn platform() -> macos::MacPlatform {
     macos::MacPlatform
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn platform() -> windows::WinPlatform {
+    windows::WinPlatform
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn platform() -> stub::StubPlatform {
     stub::StubPlatform
 }
@@ -208,8 +216,9 @@ pub fn open_accessibility_settings() {
     }
 }
 
-/// Non-macOS placeholder so the crate builds off macOS. Real Windows I/O lands in 025.
-#[cfg(not(target_os = "macos"))]
+/// Placeholder for platforms without a real shim yet (e.g. Linux dev machines). macOS and Windows
+/// have real implementations; this keeps the crate building elsewhere.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod stub {
     use super::{Platform, Rect, WindowIdentity};
 

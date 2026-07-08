@@ -1883,6 +1883,7 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
+ "windows",
 ]
 
 [[package]]
