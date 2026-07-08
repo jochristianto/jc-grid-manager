@@ -167,6 +167,11 @@ pub fn target_for(
             let (min_w, min_h) = (MIN_SIZE_FRACTION * work.w, MIN_SIZE_FRACTION * work.h);
             Some(resize_around_center(current, work, dw, dh, min_w, min_h))
         }
+        // Move to Edge — slide flush to an edge, no resize; other axis unchanged (issue 016).
+        MoveLeft => Some(Rect::new(work.x, current.y, current.w, current.h)),
+        MoveRight => Some(Rect::new(work.x + work.w - current.w, current.y, current.w, current.h)),
+        MoveUp => Some(Rect::new(current.x, work.y, current.w, current.h)),
+        MoveDown => Some(Rect::new(current.x, work.y + work.h - current.h, current.w, current.h)),
         _ => None,
     }
 }
@@ -392,5 +397,16 @@ mod tests {
         assert!((win.w - 1000.0).abs() < 1e-6);
         assert!((win.h - 800.0).abs() < 1e-6);
         assert!(win.x >= -1e-6 && win.x + win.w <= 1000.0 + 1e-6);
+    }
+
+    #[test]
+    fn target_for_move_to_edge_keeps_size() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(300.0, 200.0, 250.0, 150.0);
+        let f = |a| target_for(a, 0, win, work, &[]).unwrap();
+        assert_eq!(f(Action::MoveLeft), Rect::new(0.0, 200.0, 250.0, 150.0));
+        assert_eq!(f(Action::MoveRight), Rect::new(750.0, 200.0, 250.0, 150.0));
+        assert_eq!(f(Action::MoveUp), Rect::new(300.0, 0.0, 250.0, 150.0));
+        assert_eq!(f(Action::MoveDown), Rect::new(300.0, 650.0, 250.0, 150.0));
     }
 }

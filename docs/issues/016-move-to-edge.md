@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | none (menu-only sub-menu; user may bind) |
 | **Source** | `docs/idea.md` §4 (Sub-menus → Move to Edge) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -59,13 +59,16 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:47 WIB
+- **Finished:** 2026-07-08 18:49 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added four `target_for` arms — MoveLeft/Right/Up/Down — that slide the window flush to a work-
+area edge without resizing (position-only; the perpendicular axis is unchanged). Menu-only (no
+default binds; user-bindable via 020). Unit test asserts the four origins at constant size.
+`cargo test` → 43 pass.
 
 ## Suggested commit message
 
