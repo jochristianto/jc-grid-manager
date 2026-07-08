@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | Smaller `⌃⌥-`, Larger `⌃⌥=` |
 | **Source** | `docs/idea.md` §4 (Sizing → Smaller / Larger) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -69,13 +69,24 @@ user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:42 WIB
+- **Finished:** 2026-07-08 18:47 WIB
+- **Duration:** ~5m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added Smaller/Larger via a shared `resize_around_center(win, work, dw, dh, min_w, min_h)` helper:
+resize by ±`RESIZE_STEP` (5% of the work area, per axis) keeping the window's center fixed, then
+clamp — size floored at `MIN_SIZE_FRACTION` and capped at the work area, origin kept on-screen.
+
+**Minimum-size default (was flagged "confirm with user"):** took the recommended default — a
+**fraction, 20% of the work area** (`MIN_SIZE_FRACTION = 0.2`), so it scales with display size.
+Both `RESIZE_STEP` and `MIN_SIZE_FRACTION` are named `pub const`s in `core/geometry.rs` (config
+hooks for 020). Change the 0.2 if you'd prefer a different floor.
+
+Binds `⌃⌥-` / `⌃⌥=` (from 004) now functional. Tests: grow-around-center, cap at the work area,
+floor at the minimum, and a 40-press repeat that converges to the cap with no runaway.
+`cargo test` → 42 pass.
 
 ## Suggested commit message
 

@@ -93,6 +93,23 @@ pub fn display_for(window: Rect, displays: &[Rect]) -> Rect {
 /// centered. Config hook — issue 020 makes it a user setting (`almost_maximize_factor`).
 pub const ALMOST_MAXIMIZE_FACTOR: f64 = 0.9;
 
+/// Smaller/Larger step: fraction of the work area added/removed per press. Config hook (020).
+pub const RESIZE_STEP: f64 = 0.05;
+
+/// Smaller floor: the window won't shrink below this fraction of the work area. Config hook (020).
+pub const MIN_SIZE_FRACTION: f64 = 0.2;
+
+/// Resize `win` by `dw`/`dh` (added to width/height) keeping its center fixed, then clamp into
+/// `work`: size floored at `min_w`/`min_h` and capped at the work area, origin kept on-screen.
+fn resize_around_center(win: Rect, work: Rect, dw: f64, dh: f64, min_w: f64, min_h: f64) -> Rect {
+    let w = (win.w + dw).clamp(min_w.min(work.w), work.w);
+    let h = (win.h + dh).clamp(min_h.min(work.h), work.h);
+    let (cx, cy) = win.center();
+    let x = (cx - w / 2.0).clamp(work.x, work.x + work.w - w);
+    let y = (cy - h / 2.0).clamp(work.y, work.y + work.h - h);
+    Rect::new(x, y, w, h)
+}
+
 /// The geometry table: the absolute target rect for `action` at cycle `step`, for a window
 /// currently at `current` on the display with work area `work` (`_displays` carries all
 /// display work areas for cross-display moves). `None` means the action's geometry isn't
@@ -141,6 +158,14 @@ pub fn target_for(
             let x = work.x + ((work.w - current.w) / 2.0).max(0.0);
             let y = work.y + ((work.h - current.h) / 2.0).max(0.0);
             Some(Rect::new(x, y, current.w, current.h))
+        }
+        // Smaller / Larger — resize by RESIZE_STEP of the work area around the window's center,
+        // capped at the work area and floored at MIN_SIZE_FRACTION of it (issue 015).
+        Larger | Smaller => {
+            let sign = if matches!(action, Larger) { 1.0 } else { -1.0 };
+            let (dw, dh) = (sign * RESIZE_STEP * work.w, sign * RESIZE_STEP * work.h);
+            let (min_w, min_h) = (MIN_SIZE_FRACTION * work.w, MIN_SIZE_FRACTION * work.h);
+            Some(resize_around_center(current, work, dw, dh, min_w, min_h))
         }
         _ => None,
     }
@@ -324,5 +349,48 @@ mod tests {
             target_for(Action::Center, 0, win, work, &[]),
             Some(Rect::new(10.0, 70.0, 800.0, 300.0))
         );
+    }
+
+    #[test]
+    fn target_for_larger_grows_around_center() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(300.0, 250.0, 400.0, 300.0); // center (500, 400)
+        let got = target_for(Action::Larger, 0, win, work, &[]).unwrap();
+        // +5%: 450×340, re-centered on (500,400) → x=275, y=230.
+        assert!((got.w - 450.0).abs() < 1e-6, "w={}", got.w);
+        assert!((got.h - 340.0).abs() < 1e-6, "h={}", got.h);
+        assert!((got.x - 275.0).abs() < 1e-6, "x={}", got.x);
+        assert!((got.y - 230.0).abs() < 1e-6, "y={}", got.y);
+    }
+
+    #[test]
+    fn target_for_larger_caps_at_work_area() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(10.0, 10.0, 990.0, 790.0);
+        let got = target_for(Action::Larger, 0, win, work, &[]).unwrap();
+        assert!((got.w - 1000.0).abs() < 1e-6);
+        assert!((got.h - 800.0).abs() < 1e-6);
+        assert!(got.x >= -1e-6 && got.x + got.w <= 1000.0 + 1e-6);
+    }
+
+    #[test]
+    fn target_for_smaller_floors_at_minimum() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0); // 20% floor → 200×160
+        let win = Rect::new(400.0, 300.0, 210.0, 170.0);
+        let got = target_for(Action::Smaller, 0, win, work, &[]).unwrap();
+        assert!((got.w - 200.0).abs() < 1e-6, "w={}", got.w);
+        assert!((got.h - 160.0).abs() < 1e-6, "h={}", got.h);
+    }
+
+    #[test]
+    fn repeated_larger_converges_to_cap_without_runaway() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let mut win = Rect::new(400.0, 300.0, 200.0, 200.0);
+        for _ in 0..40 {
+            win = target_for(Action::Larger, 0, win, work, &[]).unwrap();
+        }
+        assert!((win.w - 1000.0).abs() < 1e-6);
+        assert!((win.h - 800.0).abs() < 1e-6);
+        assert!(win.x >= -1e-6 && win.x + win.w <= 1000.0 + 1e-6);
     }
 }
