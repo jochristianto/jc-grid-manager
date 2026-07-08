@@ -8,7 +8,7 @@
 | **Blocks** | 019 (Next/Previous Display); improves correctness of every action on multi-monitor |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §5.3 ("Display selection"), §7, §11 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -65,13 +65,46 @@ write the Implementation summary; do NOT git commit; refine the Suggested commit
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 17:27 WIB
+- **Finished:** 2026-07-08 17:38 WIB
+- **Duration:** ~11m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Replaced always-main snapping with per-window display selection.
+
+**What changed**
+- `core/geometry.rs`: added the pure `display_for(window, displays) -> Rect` — the display
+  whose work area has the largest overlap with the window; ties (and offscreen windows) break
+  toward the display containing the window's center, then the first display; empty list returns
+  the window unchanged. Plus `overlap_area` and `Rect::center`/`contains` helpers. 5 unit tests:
+  fully-on-one, straddle-majority, equal-overlap-center-tiebreak, offscreen→first, and a
+  negative-origin secondary (the dev multi-monitor setup).
+- `platform/macos.rs`: gave the shim real `frame()` (reads `kAXPosition`/`kAXSize` via
+  `AXValueGetValue`) and `displays()` (every `NSScreen.visibleFrame`, flipped into the shared
+  top-left space), and made `work_area(win) = display_for(frame(win), displays())`.
+- The snap path in `platform/mod.rs` is **unchanged** — it already calls `work_area(win)`, so
+  simply upgrading that impl makes every snap target the window's actual display. Single-monitor
+  is unaffected (one display → `display_for` returns it), and the primary-height flip is intact.
+
+**Key decisions**
+- Display selection lives in `core` (pure, tested); the shim only supplies raw `frame` +
+  `displays` and calls the selector. This also lets the Windows shim (025) use its native
+  `MonitorFromWindow` instead, without duplicating the algorithm.
+- `work_area` delegating to `display_for` keeps the trait stable and the snap orchestration
+  untouched.
+
+**Incidental hygiene:** the new `msg_send!` call sites grew the `objc` 0.2 macro's
+`cargo-clippy` cfg-lint noise (8→12). Declared that cfg value known via a `[lints.rust]`
+`check-cfg` in `Cargo.toml`, so `cargo clippy` is now down to a single unfixable transitive-dep
+note (`block v0.1.6`) and stays meaningful for future macOS slices.
+
+**Verification:** `cargo test` → 19 pass (5 new). `cargo clippy` → clean (one dependency note).
+The multi-monitor runtime check (focus a window on the left/negative-origin secondary, press
+`⌃⌥←` → snaps to *that* display's left half) is a user-side manual smoke test.
+
+**Follow-ups:** 019 (Next/Previous Display) builds on `displays()`; 005's state machine uses
+`frame()` and the "same display" continue-cycle check.
 
 ## Suggested commit message
 
@@ -80,5 +113,9 @@ feat(core): select target display by largest overlap
 
 Snap against the work area of the display the focused window actually
 occupies (largest frame overlap, center-containment tie-break) instead of
-always using the main display. Fixes wrong-screen snaps on multi-monitor.
+always using the main display — fixes wrong-screen snaps on multi-monitor.
+Adds a pure core::geometry::display_for with unit tests (incl. negative-origin
+displays), gives the macOS shim real frame()/displays(), and routes work_area
+through the core selector. Also silences the objc-macro cargo-clippy cfg lint
+noise via a Cargo.toml check-cfg so clippy stays meaningful.
 ```

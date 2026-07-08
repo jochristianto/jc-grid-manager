@@ -4,7 +4,8 @@
 //! conversion lives here — AX positions are top-left-origin points, while `NSScreen` frames
 //! are bottom-left-origin; both are converted into the shared top-left space of
 //! [`crate::core::geometry::Rect`]. Because everything is in points, mixing Retina and
-//! non-Retina displays needs no special handling.
+//! non-Retina displays needs no special handling. Which display a window is on is decided by
+//! the pure [`display_for`] in core, not here.
 
 // `cocoa` is deprecated in favour of the objc2 crates; it still works. Migrating the
 // NSScreen / NSWorkspace access to objc2 is a follow-up cleanup.
@@ -16,7 +17,7 @@ use accessibility_sys::{
     kAXErrorSuccess, kAXFocusedWindowAttribute, kAXPositionAttribute, kAXSizeAttribute,
     kAXTrustedCheckOptionPrompt, kAXValueTypeCGPoint, kAXValueTypeCGSize, AXIsProcessTrusted,
     AXIsProcessTrustedWithOptions, AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
-    AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate,
+    AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate, AXValueGetValue, AXValueRef,
 };
 use cocoa::appkit::NSScreen;
 use cocoa::base::{id, nil};
@@ -30,7 +31,7 @@ use core_graphics::geometry::{CGPoint, CGSize};
 use objc::{class, msg_send, sel, sel_impl};
 
 use super::{Platform, WindowIdentity};
-use crate::core::geometry::Rect;
+use crate::core::geometry::{display_for, Rect};
 
 /// The macOS implementation of [`Platform`].
 pub struct MacPlatform;
@@ -60,32 +61,34 @@ impl Platform for MacPlatform {
         unsafe { focused_window() }
     }
 
+    fn frame(&self, win: &Self::Window) -> Rect {
+        unsafe {
+            let origin =
+                copy_point_attr(win.0, kAXPositionAttribute).unwrap_or(CGPoint::new(0.0, 0.0));
+            let size = copy_size_attr(win.0, kAXSizeAttribute).unwrap_or(CGSize::new(0.0, 0.0));
+            Rect::new(origin.x, origin.y, size.width, size.height)
+        }
+    }
+
     fn set_frame(&self, win: &Self::Window, rect: Rect) -> Result<(), String> {
         let origin = CGPoint::new(rect.x, rect.y);
         let size = CGSize::new(rect.w, rect.h);
         unsafe { set_frame(win.0, origin, size) }
     }
 
-    fn work_area(&self, _win: &Self::Window) -> Rect {
-        // Issue 001 preserves the original behavior: always the MAIN display's work area.
-        // Issue 003 upgrades this to the display `win` is actually on (by largest overlap).
-        main_work_area()
-    }
-
-    // --- Contract methods with no caller in this slice --------------------------------
-    // These complete the §5.3 shim so Windows (025) can mirror the full trait, but nothing
-    // dispatches to them yet. Each is implemented for real by the slice that first needs
-    // it; until then they are cheap, never-invoked placeholders.
-
-    fn frame(&self, _win: &Self::Window) -> Rect {
-        Rect::ZERO
+    fn work_area(&self, win: &Self::Window) -> Rect {
+        // Work area of the display this window is actually on, chosen by largest overlap
+        // (idea.md §5.3). Selection is pure core logic; the shim only supplies the raw
+        // window frame + the list of display work areas.
+        display_for(self.frame(win), &self.displays())
     }
 
     fn displays(&self) -> Vec<Rect> {
-        Vec::new()
+        unsafe { all_work_areas() }
     }
 
     fn identity(&self, _win: &Self::Window) -> WindowIdentity {
+        // Owning-app bundle id + name; implemented by issue 022 (ignore-app list).
         WindowIdentity::default()
     }
 }
@@ -123,23 +126,63 @@ unsafe fn focused_window() -> Result<AxWindow, String> {
 
 /// Copy an `AXUIElement`-valued attribute (e.g. the focused window) as an owned handle.
 unsafe fn copy_element_attr(element: AXUIElementRef, attr: &str) -> Option<AxWindow> {
+    copy_attr(element, attr).map(|value| AxWindow(value as AXUIElementRef))
+}
+
+/// Copy an attribute as a raw CFType. The caller owns the +1 reference: wrap it in something
+/// that `CFRelease`s (e.g. [`AxWindow`]) or release it directly.
+unsafe fn copy_attr(element: AXUIElementRef, attr: &str) -> Option<CFTypeRef> {
     let attr = CFString::new(attr);
     let mut value: CFTypeRef = std::ptr::null();
     let err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut value);
     if err == kAXErrorSuccess && !value.is_null() {
-        Some(AxWindow(value as AXUIElementRef))
+        Some(value)
     } else {
         None
     }
 }
 
-/// The main display's visible frame (work area) in the shared top-left space.
-fn main_work_area() -> Rect {
-    unsafe {
-        let screen = NSScreen::mainScreen(nil);
+/// Read a `CGPoint`-valued attribute (e.g. `kAXPositionAttribute`).
+unsafe fn copy_point_attr(element: AXUIElementRef, attr: &str) -> Option<CGPoint> {
+    let value = copy_attr(element, attr)?;
+    let mut point = CGPoint::new(0.0, 0.0);
+    let ok = AXValueGetValue(
+        value as AXValueRef,
+        kAXValueTypeCGPoint,
+        &mut point as *mut CGPoint as *mut c_void,
+    );
+    CFRelease(value);
+    ok.then_some(point)
+}
+
+/// Read a `CGSize`-valued attribute (e.g. `kAXSizeAttribute`).
+unsafe fn copy_size_attr(element: AXUIElementRef, attr: &str) -> Option<CGSize> {
+    let value = copy_attr(element, attr)?;
+    let mut size = CGSize::new(0.0, 0.0);
+    let ok = AXValueGetValue(
+        value as AXValueRef,
+        kAXValueTypeCGSize,
+        &mut size as *mut CGSize as *mut c_void,
+    );
+    CFRelease(value);
+    ok.then_some(size)
+}
+
+/// Work areas of every display, in the shared top-left space.
+unsafe fn all_work_areas() -> Vec<Rect> {
+    let primary_h = primary_screen_height();
+    let screens: id = msg_send![class!(NSScreen), screens];
+    let count: usize = msg_send![screens, count];
+    let mut out = Vec::with_capacity(count);
+    for i in 0..count {
+        let screen: id = msg_send![screens, objectAtIndex: i];
+        if screen == nil {
+            continue;
+        }
         let visible: NSRect = screen.visibleFrame();
-        nsrect_to_toplevel(visible, primary_screen_height())
+        out.push(nsrect_to_toplevel(visible, primary_h));
     }
+    out
 }
 
 /// Convert a bottom-left-origin `NSScreen` frame into the shared top-left space.

@@ -20,9 +20,9 @@ pub struct WindowIdentity {
 
 /// The per-OS I/O shim: raw window reads/writes only, no placement logic (idea.md §5.3).
 ///
-/// `frame` / `displays` / `identity` are the forward-looking half of the §5.3 contract —
-/// wired into dispatch by issues 005 / 003 / 022. They are declared now (and stubbed in the
-/// impls) so the Windows shim (025) can implement the whole trait in one pass.
+/// `identity` is still forward-looking — wired into dispatch by issue 022 (ignore-app list)
+/// and stubbed until then; `frame` / `displays` came online with display selection (003). The
+/// whole trait is declared up front so the Windows shim (025) can implement it in one pass.
 #[allow(dead_code)]
 pub trait Platform {
     /// Opaque handle to a native window.
