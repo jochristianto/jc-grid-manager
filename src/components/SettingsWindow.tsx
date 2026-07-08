@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GeneralSection } from "./GeneralSection";
+import { ShortcutEditor } from "./ShortcutEditor";
 
 type Tab = "shortcuts" | "general" | "about";
 
@@ -18,7 +19,7 @@ const TABS: { id: Tab; label: string }[] = [
 const PROJECT_URL = "https://github.com/jochristianto/jc-grid-manager";
 
 export function SettingsWindow() {
-  const [tab, setTab] = useState<Tab>("general");
+  const [tab, setTab] = useState<Tab>("shortcuts");
 
   return (
     <div className="settings">
@@ -35,25 +36,11 @@ export function SettingsWindow() {
         ))}
       </nav>
       <main className="content">
-        {tab === "shortcuts" && <ShortcutsPlaceholder />}
+        {tab === "shortcuts" && <ShortcutEditor />}
         {tab === "general" && <GeneralSection />}
         {tab === "about" && <AboutSection />}
       </main>
     </div>
-  );
-}
-
-/** Filled in by issue 029 (shortcut editor / recorder). */
-function ShortcutsPlaceholder() {
-  return (
-    <section className="section">
-      <h2>Shortcuts</h2>
-      <p className="muted">The shortcut editor is coming soon.</p>
-      <p className="hint">
-        Meanwhile, every action is reachable from the tray menu, and shortcuts can be hand-edited in
-        the config file.
-      </p>
-    </section>
   );
 }
 

@@ -8,7 +8,7 @@
 | **Blocks** | — |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §4 ("Every shortcut is rebindable"), §5.4 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -73,21 +73,61 @@ Bookkeeping (required): record START now; add FINISH + DURATION; write the Imple
 do NOT git commit; refine the Suggested commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 21:51 WIB
+- **Finished:** 2026-07-08 21:57 WIB
+- **Duration:** ~6m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Built the **Shortcuts** section inside the 028 shell: every action grouped like §4 with its current
+combo, a per-row key recorder, inline backend-validation errors, and per-row + global reset — all
+over 020's rebinding contract via `tauriBridge`.
+
+**What changed** (frontend only)
+- **`src/lib/format.ts`** — `formatBind(bind)` renders the running platform's glyphs (`⌃⌥⇧⌘` on
+  macOS, `Ctrl+Alt+…` on Windows) with arrow/return/delete symbols and letter/digit keys, plus
+  exported `IS_MAC` / `BASE_MODIFIER_LABEL`. Mirrors the Rust `Bind::hint` (024).
+- **`src/components/ShortcutEditor.tsx`** — fetches `getBindings`, groups the 37 actions like §4,
+  and renders a row (label · combo/"None" · Record · Reset) each. **Recording**: click Record →
+  the next non-modifier `keydown` becomes the combo (`base_modifier = ctrl&&alt`, `shift`, `super =
+  meta`, `code = e.code`, which is already the W3C code the backend wants); Esc cancels; auto-repeat
+  ignored. It calls `set_binding` and **renders whatever the backend returns** — a rejection message
+  goes inline on the row (duplicate names the conflicting action; OS-refused explains). **Reset**
+  per row (disabled when already default) and **Reset all**. Subscribes to `bindings-changed` and
+  re-fetches so the list stays in sync.
+- **`SettingsWindow.tsx`** — renders `<ShortcutEditor/>` in the Shortcuts tab (placeholder gone) and
+  defaults to that tab now that it's real. **`App.css`** — styles for the editor rows.
+
+**Key decisions / deviations**
+- **No validation logic in the UI** (per the constraint): the recorder sends the raw combo and
+  trusts the backend's verdict. This also means **Windows conflict hints (027)** need no special
+  code here — when 027 makes `set_binding` reject a reserved combo, that message renders inline like
+  any other, near the row.
+- **Inline row-level recording** with an explicit "Press keys…" state + Esc-to-cancel (the
+  recommended UX), not a modal.
+- `e.code` maps 1:1 to the backend `code` (both are W3C UI Events codes), so no key translation
+  table is needed on the write path.
+
+**Verification**
+- `pnpm exec tsc --noEmit` → clean (strict). `pnpm run build` → built, 40 modules.
+- **Rendered headlessly** (vite dev + gstack browse): the app still mounts with the Shortcuts tab as
+  default — **no console errors, no white-screen**; tabs switch. The list itself shows "Loading…" in
+  a plain browser because `get_bindings` (invoke) has no Tauri backend there — expected; it populates
+  under `tauri dev`.
+- **Not run here:** the live smoke (record a new combo for Left Half → fires globally + survives
+  restart; set a duplicate → inline conflict naming the other action; Reset one + Reset all). Needs
+  the running app; flagged for the user.
 
 ## Suggested commit message
 
 ```
 feat(ui): add shortcut editor with key recording and conflict warnings
 
-List every action with its binding, record new combos, and surface backend
-validation (duplicate / OS-refused) inline, with per-row and global reset.
+Build the Shortcuts section: every action grouped like §4 with its current combo,
+a per-row recorder that captures a keydown and calls set_binding, and per-row +
+global reset. Validation stays in the backend — a rejected combo (duplicate /
+OS-refused) renders inline on the row. Render the platform's modifier glyphs and
+re-fetch on bindings-changed to stay in sync.
 ```

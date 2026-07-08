@@ -200,3 +200,74 @@ body {
 .link:hover {
   border-color: var(--accent);
 }
+
+/* Shortcut editor (issue 029) */
+.shortcuts-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.shortcut-group {
+  margin-bottom: 8px;
+}
+
+.shortcut-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-row:last-child {
+  border-bottom: none;
+}
+
+.s-label {
+  min-width: 0;
+}
+
+.s-combo {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+  min-width: 64px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.s-combo.none {
+  color: var(--muted);
+}
+
+.s-record,
+.s-reset {
+  font: inherit;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.s-record.recording {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.s-reset:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.s-error {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  font-size: 12px;
+}
