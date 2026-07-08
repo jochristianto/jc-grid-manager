@@ -1,3 +1,5 @@
+mod platform;
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -21,13 +23,18 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |_app, shortcut, event| {
+                .with_handler(move |app, shortcut, event| {
                     if *shortcut == left_half_for_handler
                         && matches!(event.state(), ShortcutState::Pressed)
                     {
-                        // TODO(next slice): move the focused window to the left half via the
-                        // platform layer (macOS AXUIElement / Windows SetWindowPos).
-                        println!("[jc-grid-manager] Left Half (⌃⌥←) pressed");
+                        // AppKit / Accessibility calls must run on the main thread.
+                        let app = app.clone();
+                        let _ = app.run_on_main_thread(move || {
+                            match platform::snap_focused_window_left_half() {
+                                Ok(()) => println!("[jc-grid-manager] Left Half — snapped"),
+                                Err(e) => eprintln!("[jc-grid-manager] Left Half — {e}"),
+                            }
+                        });
                     }
                 })
                 .build(),
