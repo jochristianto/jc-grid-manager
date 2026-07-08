@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | TL `⌃⌥U`, TR `⌃⌥I`, BL `⌃⌥J`, BR `⌃⌥K` |
 | **Source** | `docs/idea.md` §4 (Corners / quarters) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -58,13 +58,15 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:31 WIB
+- **Finished:** 2026-07-08 18:33 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added four `target_for` arms — TopLeft `(0,0,.5,.5)`, TopRight `(.5,0,.5,.5)`, BottomLeft
+`(0,.5,.5,.5)`, BottomRight `(.5,.5,.5,.5)`. Binds `⌃⌥U/I/J/K` (from 004) now functional; unit
+test verifies the four quarters tile the work area with no gaps/overlaps. `cargo test` → 34 pass.
 
 ## Suggested commit message
 

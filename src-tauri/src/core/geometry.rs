@@ -116,6 +116,11 @@ pub fn target_for(
         // Two-thirds — full-height columns, left/right anchored (issue 009).
         FirstTwoThirds => Some(fraction_to_rect(work, (0.0, 0.0, 2.0 / 3.0, 1.0))),
         LastTwoThirds => Some(fraction_to_rect(work, (1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0))),
+        // Corners — quarter cells, half width × half height (issue 010).
+        TopLeft => Some(fraction_to_rect(work, (0.0, 0.0, 0.5, 0.5))),
+        TopRight => Some(fraction_to_rect(work, (0.5, 0.0, 0.5, 0.5))),
+        BottomLeft => Some(fraction_to_rect(work, (0.0, 0.5, 0.5, 0.5))),
+        BottomRight => Some(fraction_to_rect(work, (0.5, 0.5, 0.5, 0.5))),
         _ => None,
     }
 }
@@ -245,5 +250,15 @@ mod tests {
         let f = |a| target_for(a, 0, Rect::ZERO, work, &[]).unwrap();
         assert_eq!(f(Action::FirstTwoThirds), Rect::new(0.0, 0.0, 600.0, 600.0));
         assert_eq!(f(Action::LastTwoThirds), Rect::new(300.0, 0.0, 600.0, 600.0));
+    }
+
+    #[test]
+    fn target_for_corners_tile_work_area() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let f = |a| target_for(a, 0, Rect::ZERO, work, &[]).unwrap();
+        assert_eq!(f(Action::TopLeft), Rect::new(0.0, 0.0, 500.0, 400.0));
+        assert_eq!(f(Action::TopRight), Rect::new(500.0, 0.0, 500.0, 400.0));
+        assert_eq!(f(Action::BottomLeft), Rect::new(0.0, 400.0, 500.0, 400.0));
+        assert_eq!(f(Action::BottomRight), Rect::new(500.0, 400.0, 500.0, 400.0));
     }
 }
