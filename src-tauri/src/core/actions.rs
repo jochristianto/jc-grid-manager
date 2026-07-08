@@ -17,13 +17,31 @@ pub enum Half {
 }
 
 impl Half {
-    /// Target rectangle as a fraction `(x, y, w, h)` of the work area, each in `0.0..=1.0`.
-    pub fn fraction(self) -> (f64, f64, f64, f64) {
+    /// The size cycle for repeating this directional half (idea.md §4/§7): ½ → ⅔ → ⅓ — widths
+    /// for Left/Right, heights for Top/Bottom. Each entry is an `(x, y, w, h)` fraction of the
+    /// work area; step 0 (½) is the first press.
+    pub fn cycle(self) -> [(f64, f64, f64, f64); 3] {
         match self {
-            Half::Left => (0.0, 0.0, 0.5, 1.0),
-            Half::Right => (0.5, 0.0, 0.5, 1.0),
-            Half::Top => (0.0, 0.0, 1.0, 0.5),
-            Half::Bottom => (0.0, 0.5, 1.0, 0.5),
+            Half::Left => [
+                (0.0, 0.0, 1.0 / 2.0, 1.0),
+                (0.0, 0.0, 2.0 / 3.0, 1.0),
+                (0.0, 0.0, 1.0 / 3.0, 1.0),
+            ],
+            Half::Right => [
+                (1.0 / 2.0, 0.0, 1.0 / 2.0, 1.0),
+                (1.0 / 3.0, 0.0, 2.0 / 3.0, 1.0),
+                (2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0),
+            ],
+            Half::Top => [
+                (0.0, 0.0, 1.0, 1.0 / 2.0),
+                (0.0, 0.0, 1.0, 2.0 / 3.0),
+                (0.0, 0.0, 1.0, 1.0 / 3.0),
+            ],
+            Half::Bottom => [
+                (0.0, 1.0 / 2.0, 1.0, 1.0 / 2.0),
+                (0.0, 1.0 / 3.0, 1.0, 2.0 / 3.0),
+                (0.0, 2.0 / 3.0, 1.0, 1.0 / 3.0),
+            ],
         }
     }
 }
@@ -232,11 +250,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn half_fractions_are_stable() {
-        assert_eq!(Half::Left.fraction(), (0.0, 0.0, 0.5, 1.0));
-        assert_eq!(Half::Right.fraction(), (0.5, 0.0, 0.5, 1.0));
-        assert_eq!(Half::Top.fraction(), (0.0, 0.0, 1.0, 0.5));
-        assert_eq!(Half::Bottom.fraction(), (0.0, 0.5, 1.0, 0.5));
+    fn half_cycle_starts_at_one_half() {
+        assert_eq!(Half::Left.cycle()[0], (0.0, 0.0, 0.5, 1.0));
+        assert_eq!(Half::Right.cycle()[0], (0.5, 0.0, 0.5, 1.0));
+        assert_eq!(Half::Top.cycle()[0], (0.0, 0.0, 1.0, 0.5));
+        assert_eq!(Half::Bottom.cycle()[0], (0.0, 0.5, 1.0, 0.5));
+    }
+
+    #[test]
+    fn half_cycle_advances_half_two_thirds_one_third() {
+        // Left: left-anchored widths ½ → ⅔ → ⅓.
+        let left = Half::Left.cycle();
+        assert_eq!(left[0].2, 0.5);
+        assert!((left[1].2 - 2.0 / 3.0).abs() < 1e-9);
+        assert!((left[2].2 - 1.0 / 3.0).abs() < 1e-9);
+        // Right's ⅓ step is right-anchored at x = 2/3; Bottom's ⅓ step is at y = 2/3.
+        assert!((Half::Right.cycle()[2].0 - 2.0 / 3.0).abs() < 1e-9);
+        assert!((Half::Bottom.cycle()[2].1 - 2.0 / 3.0).abs() < 1e-9);
     }
 
     #[test]

@@ -4,8 +4,9 @@
 //! methods with no placement logic. Everything smart lives in [`crate::core`]. macOS
 //! implements the trait via the Accessibility API; Windows arrives in issue 025.
 
-use crate::core::actions::Half;
-use crate::core::geometry::{fraction_to_rect, Rect};
+use crate::core::actions::Action;
+use crate::core::geometry::Rect;
+use crate::core::state::SnapState;
 
 #[cfg(target_os = "macos")]
 mod macos;
@@ -57,17 +58,24 @@ fn platform() -> stub::StubPlatform {
     stub::StubPlatform
 }
 
-/// Snap the focused window to `half` of its display's work area.
-///
-/// NOTE (issue 001): behavior is intentionally identical to the original shim — the work
-/// area is still the **main** display's (see the macOS `work_area` impl), pending
-/// per-window display selection by largest overlap in issue 003.
-pub fn snap(half: Half) -> Result<(), String> {
+/// Snap the focused window per the §7 cycling state machine: repeating the same directional
+/// action advances ½ → ⅔ → ⅓; a different action / window / display starts fresh. `state`
+/// carries the run across presses (see [`SnapState`]); the actual resulting frame is re-read
+/// after the move so terminals and min-size windows still cycle correctly.
+pub fn snap_cycling(action: Action, state: &mut SnapState) -> Result<(), String> {
+    let half = action
+        .as_half()
+        .ok_or_else(|| format!("{} does not cycle", action.label()))?;
+
     let p = platform();
     let win = p.focused_window()?;
+    let current = p.frame(&win);
     let work = p.work_area(&win);
-    let target = fraction_to_rect(work, half.fraction());
-    p.set_frame(&win, target)
+
+    let target = state.next_target(action, &half.cycle(), current, work);
+    p.set_frame(&win, target)?;
+    state.record_result(p.frame(&win));
+    Ok(())
 }
 
 /// Non-macOS placeholder so the crate builds off macOS. Real Windows I/O lands in 025.

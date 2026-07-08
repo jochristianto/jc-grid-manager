@@ -8,7 +8,7 @@
 | **Blocks** | 006 (Restore), and the "cycling" behavior of directional actions (008/009 benefit) |
 | **Default shortcut** | exercised via `⌃⌥←` / `⌃⌥→` (repeat to cycle) |
 | **Source** | `docs/idea.md` §4 ("Cycling"), §7 (the whole state machine), §10 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -80,20 +80,48 @@ the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 17:52 WIB
+- **Finished:** 2026-07-08 18:08 WIB
+- **Duration:** ~16m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Built the §7 state machine that makes snapping feel like Rectangle.
+
+**Cycle-all-four decision:** the user chose **cycle all four halves** — Top/Bottom cycle
+½→⅔→⅓ *heights* just as Left/Right cycle widths (full Rectangle parity). Implemented as a
+general per-action cycle table, so switching any half to single-step later is a one-line change.
+
+**What changed**
+- `core/state.rs` (new, pure): `SnapState` holds one `SnapRecord` (action, cycle step, last-set
+  frame, restore baseline, work area). `next_target(action, cycle, current_frame, work_area)`
+  decides fresh-grab vs continue and returns the target rect; `record_result(actual)` stores the
+  re-read frame; `baseline()` / `clear()` expose the baseline for Restore (006).
+  - **Continue** only if: same action AND same display (`work_area ≈`) AND the window is still
+    where we set it (`last_set ≈ current`, 5px tolerance). Otherwise **fresh grab** (step 0, new
+    baseline). Invalidation is automatic via frame comparison — no OS move/resize listeners.
+- `core/actions.rs`: replaced `Half::fraction()` with `Half::cycle()` (the ½→⅔→⅓ table).
+- `platform/mod.rs`: replaced `snap(half)` with `snap_cycling(action, &mut state)` —
+  focused_window → frame → work_area → `next_target` → set_frame → **re-read frame** →
+  `record_result`, so terminals / min-size windows still cycle correctly.
+- `lib.rs`: holds the single `SnapState` in a `static LazyLock<Mutex<…>>`, locked on the main
+  thread; `dispatch` routes the four halves through `snap_cycling`.
+
+**Verification:** `cargo test` → 27 pass (8 new, incl. fresh-grab, continue, tolerance,
+user-moved, action-change, display-change, baseline query/clear). `cargo clippy` → clean.
+Runtime (repeat ⌃⌥← → ½→⅔→⅓→½; drag then press → fresh ½) is a user-side manual smoke test.
+
+**Follow-ups:** 006 (Restore) reads `baseline()` + `clear()`; 007–019 feed their own cycle
+tables (often single-step) through the same `next_target` path.
 
 ## Suggested commit message
 
 ```
 feat(core): add snap state machine with size cycling and restore baseline
 
-Repeating a directional shortcut cycles ½ → ⅔ → ⅓; a per-window baseline is
-captured on fresh grab and re-read after each set_frame. Pure, unit-tested;
-invalidation is automatic via frame comparison (no OS listeners).
+Repeating a directional half cycles ½ → ⅔ → ⅓ (widths for Left/Right, heights
+for Top/Bottom — all four cycle); a per-window baseline is captured on a fresh
+grab and re-read after each set_frame. Pure and unit-tested; invalidation is
+automatic via frame comparison (no OS listeners). Snapping now runs through
+platform::snap_cycling over a shared SnapState.
 ```

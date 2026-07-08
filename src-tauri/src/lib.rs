@@ -2,12 +2,20 @@ mod core;
 mod platform;
 mod shortcuts;
 
+use std::sync::{LazyLock, Mutex};
+
 use crate::core::actions::Action;
+use crate::core::state::SnapState;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+/// The one snap state machine (idea.md §7). It is global + mutable because a repeated shortcut
+/// must see the previous snap. Guarded by a `Mutex`; today it is only ever touched from the
+/// main thread (snaps run there), so contention is nil.
+static SNAP_STATE: LazyLock<Mutex<SnapState>> = LazyLock::new(|| Mutex::new(SnapState::new()));
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -15,21 +23,20 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-/// Route a fired action to its behavior. For now only the four directional halves run real
-/// geometry; every other action logs a placeholder (a soft beep arrives in issue 021, the
-/// remaining geometry in issues 005–019).
+/// Route a fired action. The four directional halves run the cycling snap (§7); every other
+/// action logs a placeholder until its slice lands (geometry 007–019, soft beep 021).
 fn dispatch(app: &tauri::AppHandle, action: Action) {
-    match action.as_half() {
-        Some(half) => {
-            // AppKit / Accessibility calls must run on the main thread.
-            let app = app.clone();
-            let _ = app.run_on_main_thread(move || match platform::snap(half) {
-                Ok(()) => println!("[jc-grid-manager] snapped {half:?}"),
-                Err(e) => eprintln!("[jc-grid-manager] {half:?} — {e}"),
-            });
-        }
-        None => println!("[jc-grid-manager] {} not implemented", action.label()),
+    if action.as_half().is_none() {
+        println!("[jc-grid-manager] {} not implemented", action.label());
+        return;
     }
+    // AppKit / Accessibility calls must run on the main thread.
+    let _ = app.run_on_main_thread(move || {
+        let mut state = SNAP_STATE.lock().unwrap();
+        if let Err(e) = platform::snap_cycling(action, &mut state) {
+            eprintln!("[jc-grid-manager] {} — {e}", action.label());
+        }
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
