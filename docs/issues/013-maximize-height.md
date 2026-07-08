@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | `⌃⌥⇧↑` (Control+Option+Shift+Up) |
 | **Source** | `docs/idea.md` §4 (Sizing → Maximize Height) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -59,13 +59,17 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:38 WIB
+- **Finished:** 2026-07-08 18:40 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+First current-frame-relative action, so `target_for`'s `_current` param became `current`. Added
+`MaximizeHeight => Rect(current.x, work.y, current.w, work.h)` — full work-area height, top-
+aligned, width + x preserved. Because y/h are set to the work area's own values, a vertically-
+offscreen window is inherently clamped fully on-screen. Bind `⌃⌥⇧↑` (with the Shift extra, from
+004) now functional. `cargo test` → 36 pass.
 
 ## Suggested commit message
 

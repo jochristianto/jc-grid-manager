@@ -94,13 +94,13 @@ pub fn display_for(window: Rect, displays: &[Rect]) -> Rect {
 pub const ALMOST_MAXIMIZE_FACTOR: f64 = 0.9;
 
 /// The geometry table: the absolute target rect for `action` at cycle `step`, for a window
-/// currently at `_current` on the display with work area `work` (`_displays` carries all
+/// currently at `current` on the display with work area `work` (`_displays` carries all
 /// display work areas for cross-display moves). `None` means the action's geometry isn't
 /// implemented yet — the dispatcher logs that. Each action slice (007–019) fills in its arm.
 pub fn target_for(
     action: Action,
     step: usize,
-    _current: Rect,
+    current: Rect,
     work: Rect,
     _displays: &[Rect],
 ) -> Option<Rect> {
@@ -132,6 +132,9 @@ pub fn target_for(
             let f = ALMOST_MAXIMIZE_FACTOR;
             Some(fraction_to_rect(work, ((1.0 - f) / 2.0, (1.0 - f) / 2.0, f, f)))
         }
+        // Maximize Height — full work-area height, current width + x kept (issue 013). Setting
+        // y/h to the work area's own values inherently clamps a vertically-offscreen window.
+        MaximizeHeight => Some(Rect::new(current.x, work.y, current.w, work.h)),
         _ => None,
     }
 }
@@ -282,5 +285,16 @@ mod tests {
     fn target_for_maximize_fills_work_area() {
         let work = Rect::new(100.0, 50.0, 1000.0, 800.0);
         assert_eq!(target_for(Action::Maximize, 0, Rect::ZERO, work, &[]), Some(work));
+    }
+
+    #[test]
+    fn target_for_maximize_height_keeps_width_and_x() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(120.0, 300.0, 350.0, 200.0);
+        // Full height, top of work area; width and x unchanged.
+        assert_eq!(
+            target_for(Action::MaximizeHeight, 0, win, work, &[]),
+            Some(Rect::new(120.0, 0.0, 350.0, 800.0))
+        );
     }
 }
