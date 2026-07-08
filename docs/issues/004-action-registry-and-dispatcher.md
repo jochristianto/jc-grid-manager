@@ -8,7 +8,7 @@
 | **Blocks** | 005–019 (every action slice), 020 (config), 024 (tray menu) |
 | **Default shortcut** | n/a (defines the whole default scheme) |
 | **Source** | `docs/idea.md` §4, §5.4, §7 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -76,20 +76,53 @@ write the Implementation summary; do NOT git commit; refine the Suggested commit
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 17:12 WIB
+- **Finished:** 2026-07-08 17:24 WIB
+- **Duration:** ~12m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Replaced the four hardcoded shortcuts with a registry-driven scheme.
+
+**What changed**
+- `core/actions.rs`: added the `Action` enum — all 37 §4 commands — with a stable kebab-case
+  `id()` (config keys), a menu `label()`, `as_half()` (maps the four directional halves to
+  `Half`), an `ALL` array (iteration for registration + the tray menu), and `from_id()`.
+  Pure/no-window tests cover id uniqueness, `id ↔ from_id` round-trip, and the half mapping.
+- `shortcuts.rs` (new): `Bind { base_modifier, extra: Modifiers, code: Code }` +
+  `to_shortcut()`; `default_bind()` holds the §4 default scheme; `default_registry()` resolves
+  it to `Vec<(Shortcut, Action)>`. Tests spot-check ⌃⌥←, ⌃⌥↩, ⌃⌥⇧↑, ⌃⌥⌘→, the menu-only
+  actions (no default), and that no two actions resolve to the same chord.
+- `lib.rs`: builds the registry, registers every default bind at startup (a bind the OS
+  refuses is logged, not fatal), and dispatches a fired shortcut → `Action` → `dispatch()`:
+  the four halves run the real geometry path (`platform::snap`); every other action logs
+  `"<label> not implemented"`. Removed the old `ctrl_alt` helper and the four `.clone()`s
+  (which also clears the pre-existing `clone_on_copy` clippy warning).
+
+**Key decisions**
+- `Bind` lives in `shortcuts.rs`, not `core`, because it depends on the plugin's `Modifiers`
+  / `Code`; this keeps `core` pure and framework-free. `Action` (pure identity) stays in core.
+- ⌘/Win resolves to `Modifiers::SUPER` — verified against `global-hotkey` 0.8: `HotKey::new`
+  normalizes `Meta → Super`, and the macOS backend maps `Super` to the Command flag.
+- `id()`/`from_id()` are `#[allow(dead_code)]` for now (only tests use them); issue 020 wires
+  them into config persistence.
+
+**Verification:** `cargo test` → 14 pass (9 new). `cargo clippy` → no new warnings (and one
+fewer than before). Runtime check (press ⌃⌥ arrows → snap; press ⌃⌥D → logs "First Third not
+implemented") needs the running app + Accessibility grant — a user-side smoke test.
+
+**Follow-ups:** 005 = cycling state machine; 003 = per-window `work_area`; 007–019 fill each
+action's geometry; 020 wires `id`/`from_id` + rebinding; 024 uses `label()`/`ALL` for the tray.
 
 ## Suggested commit message
 
 ```
 feat(core): add action registry, default binds, and shortcut dispatcher
 
-Name every §4 command in an Action enum, add a platform-neutral default-binding
-table (⌃⌥ / Ctrl+Alt), and dispatch fired shortcuts through a registry. Halves
-run the real geometry path; unimplemented actions log a placeholder.
+Name every idea.md §4 command in an Action enum (core/actions.rs) with stable
+ids + menu labels, add a platform-neutral default-binding table in a new
+shortcuts.rs (base ⌃⌥ / Ctrl+Alt, ⌘/Win = Super), and dispatch fired shortcuts
+through a resolved registry. Replaces the four hardcoded shortcuts in lib.rs:
+the halves run the real geometry path, every other action logs a placeholder
+until its slice lands. cargo test: 14 passing.
 ```
