@@ -1,24 +1,23 @@
 //! macOS window control via the Accessibility API (`AXUIElement`).
 //!
-//! First slice: snap the focused window to the left half of the *main* display's
-//! visible frame. Multi-display selection and the shared fraction-based core come later.
+//! Snaps the focused window to a half of the *main* display's visible frame.
+//! Multi-display selection, thirds/quarters, and the repeat-to-cycle state machine come
+//! in later slices; the shared fraction-based core will be factored out then.
 
 // `cocoa` is deprecated in favour of the objc2 crates; it still works. Migrating the
-// NSScreen access to objc2-app-kit is a follow-up cleanup.
+// NSScreen / NSWorkspace access to objc2 is a follow-up cleanup.
 #![allow(deprecated)]
 
 use std::ffi::c_void;
-use std::ptr;
 
 use accessibility_sys::{
-    kAXErrorSuccess, kAXFocusedApplicationAttribute, kAXFocusedWindowAttribute,
-    kAXPositionAttribute, kAXSizeAttribute, kAXTrustedCheckOptionPrompt, kAXValueTypeCGPoint,
-    kAXValueTypeCGSize, AXIsProcessTrusted, AXIsProcessTrustedWithOptions,
-    AXUIElementCopyAttributeValue, AXUIElementCreateSystemWide, AXUIElementRef,
-    AXUIElementSetAttributeValue, AXValueCreate,
+    kAXErrorSuccess, kAXFocusedWindowAttribute, kAXPositionAttribute, kAXSizeAttribute,
+    kAXTrustedCheckOptionPrompt, kAXValueTypeCGPoint, kAXValueTypeCGSize, AXIsProcessTrusted,
+    AXIsProcessTrustedWithOptions, AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
+    AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate,
 };
 use cocoa::appkit::NSScreen;
-use cocoa::base::nil;
+use cocoa::base::{id, nil};
 use cocoa::foundation::NSRect;
 use core_foundation::base::TCFType;
 use core_foundation::boolean::CFBoolean;
@@ -26,6 +25,28 @@ use core_foundation::dictionary::CFDictionary;
 use core_foundation::string::CFString;
 use core_foundation_sys::base::{CFRelease, CFTypeRef};
 use core_graphics::geometry::{CGPoint, CGSize};
+use objc::{class, msg_send, sel, sel_impl};
+
+/// Which half of the screen to snap the focused window to.
+#[derive(Debug, Clone, Copy)]
+pub enum Half {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+impl Half {
+    /// Target rectangle as a fraction `(x, y, w, h)` of the work area, each in `0.0..=1.0`.
+    fn fraction(self) -> (f64, f64, f64, f64) {
+        match self {
+            Half::Left => (0.0, 0.0, 0.5, 1.0),
+            Half::Right => (0.5, 0.0, 0.5, 1.0),
+            Half::Top => (0.0, 0.0, 1.0, 0.5),
+            Half::Bottom => (0.0, 0.5, 1.0, 0.5),
+        }
+    }
+}
 
 /// Releases a copied `AXUIElement` (a CoreFoundation object) on drop.
 struct AxElement(AXUIElementRef);
@@ -38,8 +59,8 @@ impl Drop for AxElement {
     }
 }
 
-/// Whether the process is trusted for the Accessibility API. If not, this pops the
-/// system prompt that points the user at System Settings → Privacy & Security.
+/// Whether the process is trusted for the Accessibility API. If not, this pops the system
+/// prompt that points the user at System Settings → Privacy & Security.
 fn ensure_trusted() -> bool {
     unsafe {
         if AXIsProcessTrusted() {
@@ -53,10 +74,10 @@ fn ensure_trusted() -> bool {
     }
 }
 
-/// Copy an `AXUIElement`-valued attribute (e.g. focused app / focused window).
+/// Copy an `AXUIElement`-valued attribute (e.g. the focused window).
 unsafe fn copy_element_attr(element: AXUIElementRef, attr: &str) -> Option<AxElement> {
     let attr = CFString::new(attr);
-    let mut value: CFTypeRef = ptr::null();
+    let mut value: CFTypeRef = std::ptr::null();
     let err = AXUIElementCopyAttributeValue(element, attr.as_concrete_TypeRef(), &mut value);
     if err == kAXErrorSuccess && !value.is_null() {
         Some(AxElement(value as AXUIElementRef))
@@ -65,8 +86,24 @@ unsafe fn copy_element_attr(element: AXUIElementRef, attr: &str) -> Option<AxEle
     }
 }
 
-/// Left half of the main display's visible frame, in top-left global (AX) coordinates.
-fn main_screen_left_half() -> (CGPoint, CGSize) {
+/// The focused window of the frontmost application.
+///
+/// Uses `NSWorkspace.frontmostApplication` (reliable) instead of the system-wide
+/// `AXFocusedApplication` attribute, which returns nothing during app/focus transitions.
+unsafe fn focused_window() -> Result<AxElement, String> {
+    let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+    let app: id = msg_send![workspace, frontmostApplication];
+    if app == nil {
+        return Err("no frontmost application".into());
+    }
+    let pid: i32 = msg_send![app, processIdentifier];
+    let app_element = AxElement(AXUIElementCreateApplication(pid));
+    copy_element_attr(app_element.0, kAXFocusedWindowAttribute)
+        .ok_or_else(|| "the focused app has no movable window".to_string())
+}
+
+/// The main display's visible frame (work area) in top-left global (AX) coordinates.
+fn main_work_area() -> (f64, f64, f64, f64) {
     unsafe {
         let screen = NSScreen::mainScreen(nil);
         let full: NSRect = screen.frame();
@@ -74,12 +111,9 @@ fn main_screen_left_half() -> (CGPoint, CGSize) {
 
         // NSScreen uses a bottom-left origin (y up); the Accessibility API uses a
         // top-left origin (y down). Flip the visible frame using the screen's full height.
-        let ax_x = visible.origin.x;
-        let ax_y = full.size.height - (visible.origin.y + visible.size.height);
-        let width = visible.size.width / 2.0;
-        let height = visible.size.height;
-
-        (CGPoint::new(ax_x, ax_y), CGSize::new(width, height))
+        let x = visible.origin.x;
+        let y = full.size.height - (visible.origin.y + visible.size.height);
+        (x, y, visible.size.width, visible.size.height)
     }
 }
 
@@ -107,8 +141,8 @@ unsafe fn set_axvalue(
     }
 }
 
-/// Snap the currently focused window to the left half of the main display.
-pub fn snap_focused_window_left_half() -> Result<(), String> {
+/// Snap the currently focused window to the given half of the main display.
+pub fn snap(half: Half) -> Result<(), String> {
     if !ensure_trusted() {
         return Err("Accessibility permission not granted yet — enable JC Grid Manager in \
                     System Settings → Privacy & Security → Accessibility, then try again."
@@ -116,13 +150,12 @@ pub fn snap_focused_window_left_half() -> Result<(), String> {
     }
 
     unsafe {
-        let system_wide = AxElement(AXUIElementCreateSystemWide());
-        let app = copy_element_attr(system_wide.0, kAXFocusedApplicationAttribute)
-            .ok_or("no focused application")?;
-        let window = copy_element_attr(app.0, kAXFocusedWindowAttribute)
-            .ok_or("the focused app has no focused window")?;
+        let window = focused_window()?;
+        let (wx, wy, ww, wh) = main_work_area();
+        let (fx, fy, fw, fh) = half.fraction();
 
-        let (origin, size) = main_screen_left_half();
+        let origin = CGPoint::new(wx + fx * ww, wy + fy * wh);
+        let size = CGSize::new(fw * ww, fh * wh);
 
         set_axvalue(
             window.0,

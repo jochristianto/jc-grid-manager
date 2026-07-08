@@ -1,5 +1,6 @@
 mod platform;
 
+use platform::Half;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -12,37 +13,57 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+/// A shortcut with the app's base modifier (Control+Option on macOS / Ctrl+Alt on Windows).
+fn ctrl_alt(code: Code) -> Shortcut {
+    Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), code)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // ⌃⌥←  — Control+Option+Left on macOS, Ctrl+Alt+Left on Windows.
-    // (ALT maps to the Option key on macOS.)
-    let left_half = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::ArrowLeft);
-    let left_half_for_handler = left_half.clone();
+    let left = ctrl_alt(Code::ArrowLeft);
+    let right = ctrl_alt(Code::ArrowRight);
+    let up = ctrl_alt(Code::ArrowUp);
+    let down = ctrl_alt(Code::ArrowDown);
+
+    // Clones for the shortcut handler; the originals are registered in `setup`.
+    let (h_left, h_right, h_up, h_down) = (left.clone(), right.clone(), up.clone(), down.clone());
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if *shortcut == left_half_for_handler
-                        && matches!(event.state(), ShortcutState::Pressed)
-                    {
-                        // AppKit / Accessibility calls must run on the main thread.
-                        let app = app.clone();
-                        let _ = app.run_on_main_thread(move || {
-                            match platform::snap_focused_window_left_half() {
-                                Ok(()) => println!("[jc-grid-manager] Left Half — snapped"),
-                                Err(e) => eprintln!("[jc-grid-manager] Left Half — {e}"),
-                            }
-                        });
+                    if !matches!(event.state(), ShortcutState::Pressed) {
+                        return;
                     }
+                    let half = if *shortcut == h_left {
+                        Half::Left
+                    } else if *shortcut == h_right {
+                        Half::Right
+                    } else if *shortcut == h_up {
+                        Half::Top
+                    } else if *shortcut == h_down {
+                        Half::Bottom
+                    } else {
+                        return;
+                    };
+                    // AppKit / Accessibility calls must run on the main thread.
+                    let app = app.clone();
+                    let _ = app.run_on_main_thread(move || match platform::snap(half) {
+                        Ok(()) => println!("[jc-grid-manager] snapped {half:?}"),
+                        Err(e) => eprintln!("[jc-grid-manager] {half:?} — {e}"),
+                    });
                 })
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![greet])
         .setup(move |app| {
-            // Register the global shortcut(s).
-            app.global_shortcut().register(left_half)?;
+            // Register the half-snapping shortcuts. A conflicting bind is logged, not fatal.
+            for shortcut in [left, right, up, down] {
+                if let Err(e) = app.global_shortcut().register(shortcut) {
+                    eprintln!("[jc-grid-manager] could not register a shortcut: {e}");
+                }
+            }
 
             // Menu-bar / system-tray icon with a minimal menu (just Quit for now).
             let quit = MenuItem::with_id(app, "quit", "Quit JC Grid Manager", true, None::<&str>)?;
