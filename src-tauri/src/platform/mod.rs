@@ -14,20 +14,40 @@ use crate::core::state::SnapState;
 #[cfg(target_os = "macos")]
 mod macos;
 
-/// Identity of the application that owns a window. Consumed by the ignore-app list (022).
-#[allow(dead_code)] // constructed for real once issue 022 wires identity() into dispatch.
+/// Identity of the application that owns a window — the ignore-app list keys on this (idea.md §4).
 #[derive(Debug, Clone, Default)]
 pub struct WindowIdentity {
     pub bundle_id: Option<String>,
     pub name: Option<String>,
 }
 
+impl WindowIdentity {
+    /// Stable key for the ignore list: the bundle id when the OS reports one, else the display
+    /// name. `None` for a fully anonymous process — nothing to key on, so it can't be ignored.
+    pub fn key(&self) -> Option<String> {
+        self.bundle_id.clone().or_else(|| self.name.clone())
+    }
+
+    /// Whether this app is present in the ignore list `list` (compared by [`Self::key`]).
+    pub fn is_ignored(&self, list: &[String]) -> bool {
+        self.key().is_some_and(|k| list.contains(&k))
+    }
+
+    /// Human label for the tray "Ignore [App]" item — the display name, falling back to the
+    /// bundle id, then a generic phrase.
+    pub fn display_label(&self) -> String {
+        self.name
+            .clone()
+            .or_else(|| self.bundle_id.clone())
+            .unwrap_or_else(|| "this app".to_string())
+    }
+}
+
 /// The per-OS I/O shim: raw window reads/writes only, no placement logic (idea.md §5.3).
 ///
-/// `identity` is still forward-looking — wired into dispatch by issue 022 (ignore-app list)
-/// and stubbed until then; `frame` / `displays` came online with display selection (003). The
-/// whole trait is declared up front so the Windows shim (025) can implement it in one pass.
-#[allow(dead_code)]
+/// `identity` backs the ignore-app list (022); `frame` / `displays` came online with display
+/// selection (003). The whole trait is declared up front so the Windows shim (025) can implement
+/// it in one pass.
 pub trait Platform {
     /// Opaque handle to a native window.
     type Window;
@@ -108,6 +128,15 @@ pub fn restore(state: &mut SnapState) -> Result<bool, String> {
     Ok(is_effective(before, baseline, after))
 }
 
+/// Identity of the focused window's owning app (idea.md §4 ignore list). Resolves through the
+/// same focused-window path as [`perform`], so it needs Accessibility and — like `perform` — must
+/// run on the main thread. Backs the ignore check in dispatch and the tray "Ignore [App]" item.
+pub fn focused_app_identity() -> Result<WindowIdentity, String> {
+    let p = platform();
+    let win = p.focused_window()?;
+    Ok(p.identity(&win))
+}
+
 /// Whether an action that started at `before`, aimed for `target`, and landed at `actual` did
 /// anything effective. It is a no-op (returns `false`) only when the action *meant* to move the
 /// window (`target` differs from `before`) but the window did not budge at all (`actual` still
@@ -181,8 +210,46 @@ mod stub {
 
 #[cfg(test)]
 mod tests {
-    use super::is_effective;
+    use super::{is_effective, WindowIdentity};
     use crate::core::geometry::Rect;
+
+    fn identity(bundle: Option<&str>, name: Option<&str>) -> WindowIdentity {
+        WindowIdentity {
+            bundle_id: bundle.map(str::to_string),
+            name: name.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn key_prefers_bundle_id_then_name() {
+        assert_eq!(
+            identity(Some("com.apple.Safari"), Some("Safari")).key(),
+            Some("com.apple.Safari".to_string())
+        );
+        assert_eq!(identity(None, Some("Some App")).key(), Some("Some App".to_string()));
+        assert_eq!(identity(None, None).key(), None);
+    }
+
+    #[test]
+    fn is_ignored_matches_on_key() {
+        let list = vec!["com.apple.Safari".to_string(), "com.foo.Bar".to_string()];
+        // Keyed by bundle id, present in the list → ignored.
+        assert!(identity(Some("com.foo.Bar"), Some("Bar")).is_ignored(&list));
+        // Not in the list → managed.
+        assert!(!identity(Some("com.other.App"), Some("App")).is_ignored(&list));
+        // Anonymous (no key) → never ignored, even against a non-empty list.
+        assert!(!identity(None, None).is_ignored(&list));
+        // Falls back to the name as the key when there's no bundle id.
+        let name_list = vec!["Legacy App".to_string()];
+        assert!(identity(None, Some("Legacy App")).is_ignored(&name_list));
+    }
+
+    #[test]
+    fn display_label_falls_back() {
+        assert_eq!(identity(Some("com.x.Y"), Some("Why")).display_label(), "Why");
+        assert_eq!(identity(Some("com.x.Y"), None).display_label(), "com.x.Y");
+        assert_eq!(identity(None, None).display_label(), "this app");
+    }
 
     const START: Rect = Rect {
         x: 100.0,

@@ -29,14 +29,31 @@ fn greet(name: &str) -> String {
 /// Route a fired action through the §7 state machine. Restore returns to the pre-snap baseline;
 /// every other action runs through the geometry table with the live user tunables.
 fn dispatch(app: &tauri::AppHandle, action: Action) {
-    // Snapshot the current tunables (they may have been changed live via `set_tunable`).
-    let tunables = {
+    // Snapshot the live config the action needs — sizing tunables (may have changed via
+    // `set_tunable`) and the ignore list (§4) — so we don't hold the config lock across window I/O.
+    let (tunables, ignore_apps) = {
         let state = app.state::<Mutex<ConfigState>>();
         let guard = state.lock().unwrap();
-        guard.config.tunables
+        (guard.config.tunables, guard.config.ignore_apps.clone())
     };
     // AppKit / Accessibility calls must run on the main thread.
     let _ = app.run_on_main_thread(move || {
+        // Ignore-app list (§4): if the frontmost app is ignored, skip silently (the user opted
+        // in). Only resolve identity when something is actually ignored — that avoids an extra
+        // Accessibility round-trip on every keypress in the common (empty-list) case.
+        if !ignore_apps.is_empty() {
+            if let Ok(identity) = platform::focused_app_identity() {
+                if identity.is_ignored(&ignore_apps) {
+                    println!(
+                        "[jc-grid-manager] {} — {} is ignored, skipping",
+                        action.label(),
+                        identity.display_label()
+                    );
+                    return;
+                }
+            }
+        }
+
         let mut state = SNAP_STATE.lock().unwrap();
         if action == Action::Restore {
             match platform::restore(&mut state) {
@@ -101,7 +118,9 @@ pub fn run() {
             config::reset_all_bindings,
             config::set_tunable,
             config::get_autostart,
-            config::set_autostart
+            config::set_autostart,
+            config::get_frontmost_app,
+            config::toggle_ignore_current_app
         ])
         .setup(|app| {
             // Load the persisted per-machine config (or defaults on first run) and register the

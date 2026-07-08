@@ -17,10 +17,12 @@
 //! - `set_tunable(key: String, value: f64) -> Result<(), BindingError>`
 //! - `get_autostart() -> Result<bool, BindingError>`  — launch-at-login state (issue 023)
 //! - `set_autostart(enabled: bool) -> Result<(), BindingError>`
+//! - `get_frontmost_app() -> Result<IgnoreStatus, BindingError>`  — frontmost app + ignore state (022)
+//! - `toggle_ignore_current_app() -> Result<IgnoreStatus, BindingError>`  — toggle the frontmost app
 //!
 //! Event: `bindings-changed` — emitted after any successful change so an open settings window
 //! can refetch. `BindingError` is `{ code, message }`; codes: `unknown-action`, `unknown-tunable`,
-//! `invalid-value`, `duplicate`, `os-refused`, `autostart`, `io`.
+//! `invalid-value`, `duplicate`, `os-refused`, `autostart`, `identity`, `io`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -33,6 +35,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::core::actions::Action;
 use crate::core::geometry::Tunables;
+use crate::platform::{focused_app_identity, WindowIdentity};
 use crate::shortcuts::{default_bind, Bind};
 
 /// Config file name inside the app-config dir.
@@ -148,6 +151,27 @@ pub struct BindingInfo {
     pub bind: Option<Bind>,
     /// Whether the effective bind is the factory default.
     pub is_default: bool,
+}
+
+/// The frontmost app's identity + ignore state, for the tray's dynamic "Ignore [App]" item (024).
+#[derive(Debug, Serialize)]
+pub struct IgnoreStatus {
+    /// Stable ignore-list key (bundle id / name), or `None` if the app is anonymous.
+    pub id: Option<String>,
+    /// Display name for the "Ignore [App]" label.
+    pub name: String,
+    /// Whether the app is currently ignored (the menu item's checked state).
+    pub ignored: bool,
+}
+
+impl IgnoreStatus {
+    fn of(identity: &WindowIdentity, ignore_apps: &[String]) -> Self {
+        IgnoreStatus {
+            id: identity.key(),
+            name: identity.display_label(),
+            ignored: identity.is_ignored(ignore_apps),
+        }
+    }
 }
 
 /// Absolute path to the config file inside the OS app-config dir.
@@ -413,6 +437,53 @@ pub fn set_autostart(
     save(&app, &guard.config).map_err(|e| BindingError::new("io", e))
 }
 
+// ----- Ignore-app list (issue 022) -----------------------------------------------------------
+
+/// The frontmost app plus whether it's ignored — backs the tray's dynamic "Ignore [App]" item
+/// (024). Runs on the main thread (this is a synchronous command), so the AppKit lookup is safe.
+#[tauri::command]
+pub fn get_frontmost_app(state: State<'_, Mutex<ConfigState>>) -> Result<IgnoreStatus, BindingError> {
+    let identity = focused_app_identity().map_err(|e| BindingError::new("identity", e))?;
+    let guard = state.lock().unwrap();
+    Ok(IgnoreStatus::of(&identity, &guard.config.ignore_apps))
+}
+
+/// Toggle the frontmost app in the ignore list (idea.md §4): add it if absent, remove it if
+/// present, then persist. Ignored apps are skipped by the dispatcher (silently). Returns the new
+/// status so the caller (tray/settings) can update its label + checkmark.
+#[tauri::command]
+pub fn toggle_ignore_current_app(
+    app: AppHandle,
+    state: State<'_, Mutex<ConfigState>>,
+) -> Result<IgnoreStatus, BindingError> {
+    let identity = focused_app_identity().map_err(|e| BindingError::new("identity", e))?;
+    let Some(key) = identity.key() else {
+        return Err(BindingError::new(
+            "identity",
+            "the frontmost app reports no bundle id or name to ignore",
+        ));
+    };
+
+    let config_snapshot = {
+        let mut guard = state.lock().unwrap();
+        toggle_membership(&mut guard.config.ignore_apps, &key);
+        guard.config.clone()
+    };
+    save(&app, &config_snapshot).map_err(|e| BindingError::new("io", e))?;
+    Ok(IgnoreStatus::of(&identity, &config_snapshot.ignore_apps))
+}
+
+/// Add `key` to `list` if absent, remove it if present. Returns the resulting membership.
+fn toggle_membership(list: &mut Vec<String>, key: &str) -> bool {
+    if let Some(pos) = list.iter().position(|x| x == key) {
+        list.remove(pos);
+        false
+    } else {
+        list.push(key.to_string());
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,6 +565,23 @@ mod tests {
             .registry()
             .iter()
             .any(|(sc, a)| *a == Action::CenterHalf && *sc == bind(Code::KeyM).to_shortcut()));
+    }
+
+    #[test]
+    fn toggle_membership_adds_then_removes() {
+        let mut list: Vec<String> = Vec::new();
+        // Absent → added, returns true.
+        assert!(toggle_membership(&mut list, "com.apple.Safari"));
+        assert_eq!(list, vec!["com.apple.Safari".to_string()]);
+        // Present → removed, returns false.
+        assert!(!toggle_membership(&mut list, "com.apple.Safari"));
+        assert!(list.is_empty());
+        // Independent keys don't collide.
+        toggle_membership(&mut list, "com.a.B");
+        toggle_membership(&mut list, "com.c.D");
+        assert_eq!(list.len(), 2);
+        assert!(!toggle_membership(&mut list, "com.a.B"));
+        assert_eq!(list, vec!["com.c.D".to_string()]);
     }
 
     #[test]

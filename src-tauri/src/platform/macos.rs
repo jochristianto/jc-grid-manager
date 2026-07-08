@@ -17,7 +17,8 @@ use accessibility_sys::{
     kAXErrorSuccess, kAXFocusedWindowAttribute, kAXPositionAttribute, kAXSizeAttribute,
     kAXTrustedCheckOptionPrompt, kAXValueTypeCGPoint, kAXValueTypeCGSize, AXIsProcessTrusted,
     AXIsProcessTrustedWithOptions, AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
-    AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate, AXValueGetValue, AXValueRef,
+    AXUIElementGetPid, AXUIElementRef, AXUIElementSetAttributeValue, AXValueCreate,
+    AXValueGetValue, AXValueRef,
 };
 use cocoa::appkit::NSScreen;
 use cocoa::base::{id, nil};
@@ -99,10 +100,45 @@ impl Platform for MacPlatform {
         unsafe { all_work_areas() }
     }
 
-    fn identity(&self, _win: &Self::Window) -> WindowIdentity {
-        // Owning-app bundle id + name; implemented by issue 022 (ignore-app list).
-        WindowIdentity::default()
+    fn identity(&self, win: &Self::Window) -> WindowIdentity {
+        // Owning-app bundle id + display name, resolved from the window's process id (§4).
+        unsafe { window_identity(win.0) }
     }
+}
+
+/// Owning-application identity of the app that owns `window` (idea.md §4 ignore list): its bundle
+/// id + localized name, looked up from the window's process id via `NSRunningApplication`. Any
+/// piece the OS doesn't provide comes back as `None`.
+unsafe fn window_identity(window: AXUIElementRef) -> WindowIdentity {
+    let mut pid: i32 = 0;
+    if AXUIElementGetPid(window, &mut pid) != kAXErrorSuccess {
+        return WindowIdentity::default();
+    }
+    let app: id = msg_send![
+        class!(NSRunningApplication),
+        runningApplicationWithProcessIdentifier: pid
+    ];
+    if app == nil {
+        return WindowIdentity::default();
+    }
+    let bundle: id = msg_send![app, bundleIdentifier];
+    let name: id = msg_send![app, localizedName];
+    WindowIdentity {
+        bundle_id: nsstring_to_string(bundle),
+        name: nsstring_to_string(name),
+    }
+}
+
+/// Copy an `NSString` (`id`) into an owned Rust `String`; `nil` or a null UTF-8 buffer → `None`.
+unsafe fn nsstring_to_string(s: id) -> Option<String> {
+    if s == nil {
+        return None;
+    }
+    let bytes: *const std::os::raw::c_char = msg_send![s, UTF8String];
+    if bytes.is_null() {
+        return None;
+    }
+    Some(std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned())
 }
 
 /// Whether the process is trusted for the Accessibility API. If not, this pops the system
