@@ -2,17 +2,14 @@ mod config;
 mod core;
 mod platform;
 mod shortcuts;
+mod tray;
 
 use std::sync::{LazyLock, Mutex};
 
 use crate::config::ConfigState;
 use crate::core::actions::Action;
 use crate::core::state::SnapState;
-use tauri::{
-    menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
-    Manager,
-};
+use tauri::Manager;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 /// The one snap state machine (idea.md §7). It is global + mutable because a repeated shortcut
@@ -27,8 +24,9 @@ fn greet(name: &str) -> String {
 }
 
 /// Route a fired action through the §7 state machine. Restore returns to the pre-snap baseline;
-/// every other action runs through the geometry table with the live user tunables.
-fn dispatch(app: &tauri::AppHandle, action: Action) {
+/// every other action runs through the geometry table with the live user tunables. Shared by the
+/// global-shortcut handler and the tray menu (issue 024).
+pub(crate) fn dispatch(app: &tauri::AppHandle, action: Action) {
     // Snapshot the live config the action needs — sizing tunables (may have changed via
     // `set_tunable`) and the ignore list (§4) — so we don't hold the config lock across window I/O.
     let (tunables, ignore_apps) = {
@@ -137,19 +135,8 @@ pub fn run() {
             }
             app.manage(Mutex::new(state));
 
-            // Menu-bar / system-tray icon with a minimal menu (just Quit for now).
-            let quit = MenuItem::with_id(app, "quit", "Quit JC Grid Manager", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit])?;
-            TrayIconBuilder::with_id("main")
-                .icon(app.default_window_icon().unwrap().clone())
-                .tooltip("JC Grid Manager")
-                .menu(&menu)
-                .on_menu_event(|app, event| {
-                    if event.id.as_ref() == "quit" {
-                        app.exit(0);
-                    }
-                })
-                .build(app)?;
+            // Menu-bar / system-tray icon with the full §4 menu (issue 024).
+            tray::setup(app.handle())?;
 
             Ok(())
         })

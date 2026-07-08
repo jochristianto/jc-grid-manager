@@ -7,7 +7,7 @@
 | **Depends on** | 005–019 (the actions it invokes), 022 (ignore label); soft-dep 020 |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §4 (all menus + "Other menu items"), §5.5 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -69,15 +69,62 @@ Bookkeeping (required): record START now; add FINISH + DURATION; write the Imple
 do NOT git commit; refine the Suggested commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 21:23 WIB
+- **Finished:** 2026-07-08 21:35 WIB
+- **Duration:** ~12m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Replaced the Quit-only tray menu with the full §4 menu, built in Rust (§5.5). Every action —
+including the four menu-only groups — is now reachable without a shortcut, and each leaf
+dispatches through the **same** `dispatch` the global shortcuts use.
+
+**What changed**
+- **New `tray.rs`** (a dedicated module, mirroring the per-concern layout) with `setup(app)`:
+  - Grouped submenus mirroring §4: **Halves** (+ Center Half), **Corners**, **Thirds**, **Sizing**
+    (Maximize, Almost Maximize, Maximize Height, Smaller, Larger, Center, Restore), **Displays**,
+    and **Move to Edge** / **Fourths** / **Sixths**. Each leaf's menu id **is** its
+    [`Action::id`], so `on_menu_event` maps id → `Action::from_id` → `crate::dispatch` — menu-only
+    actions (no default bind) work through the exact same path.
+  - Each item shows its **effective shortcut as trailing hint text** (e.g. `Left Half   ⌃⌥←`) via
+    the new `Bind::hint()`. Per the issue's recommendation these are hints, not real accelerators
+    (no double-fire, no accelerator-string parsing).
+  - Dynamic **Ignore "[App]"** (`CheckMenuItem`): refreshed to the frontmost app's name +
+    checked state on `TrayIconEvent::Enter` (there's no cross-platform "menu about to open" event;
+    hover reliably precedes the click that opens the menu). Clicking it calls 022's
+    `toggle_ignore_current_app` and updates the label/checkmark in place.
+  - **Settings…** shows + focuses the main window (pre-028 stand-in, as the issue allows).
+    **About** is the native `PredefinedMenuItem::about` (app name + version from the bundle — no
+    frontend needed). **Quit** exits. **No "Check for Updates…"** item (§4/§9).
+- **`shortcuts.rs`**: `Bind::hint()` → a compact macOS symbol string (`⌃⌥⇧⌘` order, arrows /
+  ↩ / ⌫ / letters), plus a `key_symbol` helper. Unit-tested.
+- **`lib.rs`**: `mod tray`; `dispatch` is now `pub(crate)` (shared with the tray); the inline
+  Quit-only tray block is replaced by `tray::setup(app.handle())`; dropped the now-unused menu
+  imports.
+
+**Key decisions / deviations**
+- **Hints reflect the config at build time.** Live rebinds (020) don't refresh the hint text until
+  restart — the shortcut still works; only the cosmetic hint lags. Rebuild-on-rebind would fight
+  the capture-based hover refresh, and hint-freshness isn't an acceptance criterion; left as a
+  follow-up. (The **Ignore label**, which *is* an acceptance criterion, is refreshed live.)
+- **Hover (`Enter`) as the "menu about to open" signal** — Tauri v2 exposes no menu-open event for
+  tray menus; `Enter` fires as the cursor reaches the icon, just before the opening click.
+- **Native About panel** instead of a custom window — simplest "functional" About with no frontend
+  dependency; the real About view can come with the frontend windows later.
+- The menu is built against the concrete `Wry` runtime (like `lib.rs`/`config.rs`), not generic
+  `R`, so it can call the config commands directly.
+
+**Verification**
+- `cargo build` OK, `cargo test` → 68 pass (1 new: `Bind::hint` renders `⌃⌥←` / `⌃⌥⇧↑` / `⌃⌥⌘→`
+  in macOS order), `cargo clippy --all-targets` clean. Every Tauri 2.11.5 menu/tray signature was
+  checked against the crate source.
+- **Not run here:** the manual tray smoke (open the menu, trigger one action per group + each
+  sub-menu; switch frontmost app and reopen → "Ignore [App]" relabels; toggle it → 022 behavior;
+  Settings focuses the window; About shows the panel). It needs the running app on a live desktop
+  (+ Accessibility) and would register system-wide shortcuts, so it's left for the user — as with
+  001/020/021/022/023.
 
 ## Suggested commit message
 
@@ -86,5 +133,8 @@ feat(tray): full menu mirroring the Rectangle feature set
 
 Replace the Quit-only menu with grouped Halves/Corners/Thirds/Sizing/Displays
 plus Move-to-Edge/Fourths/Sixths sub-menus, a dynamic Ignore "[App]" item, and
-Settings/About/Quit. Every item dispatches through the shared action registry.
+Settings/About/Quit. Every leaf carries its action id and dispatches through the
+shared dispatcher, so menu-only actions work too. Shortcut hints come from the
+effective binds; the Ignore label refreshes to the frontmost app on hover. Built
+in Rust via Tauri's tray API (no frontend). Adds Bind::hint (cargo test: 68).
 ```

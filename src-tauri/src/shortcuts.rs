@@ -101,6 +101,47 @@ impl Bind {
         }
         Shortcut::new(Some(mods), self.code)
     }
+
+    /// A compact macOS-style symbol string for this chord (e.g. `⌃⌥←`), shown as the tray menu's
+    /// discoverability hint (issue 024). Modifier order follows the macOS convention ⌃⌥⇧⌘.
+    pub fn hint(self) -> String {
+        let mut s = String::new();
+        if self.base_modifier {
+            s.push('⌃');
+            s.push('⌥');
+        }
+        if self.extra.contains(Modifiers::SHIFT) {
+            s.push('⇧');
+        }
+        if self.extra.contains(Modifiers::SUPER) {
+            s.push('⌘');
+        }
+        s.push_str(&key_symbol(self.code));
+        s
+    }
+}
+
+/// The macOS glyph (arrows / return / delete) or bare letter-digit for a key `code`, for the
+/// tray menu hint. Unknown codes fall back to their W3C name minus the `Key`/`Digit` prefix.
+fn key_symbol(code: Code) -> String {
+    match code {
+        Code::ArrowLeft => "←".to_string(),
+        Code::ArrowRight => "→".to_string(),
+        Code::ArrowUp => "↑".to_string(),
+        Code::ArrowDown => "↓".to_string(),
+        Code::Enter => "↩".to_string(),
+        Code::Backspace => "⌫".to_string(),
+        Code::Minus => "−".to_string(),
+        Code::Equal => "=".to_string(),
+        Code::Space => "␣".to_string(),
+        other => {
+            let name = other.to_string();
+            name.strip_prefix("Key")
+                .or_else(|| name.strip_prefix("Digit"))
+                .map(str::to_string)
+                .unwrap_or(name)
+        }
+    }
 }
 
 /// The idea.md §4 default binding for `action`, or `None` for menu-only actions.
@@ -200,6 +241,15 @@ mod tests {
                 Code::ArrowRight
             )
         );
+    }
+
+    #[test]
+    fn hint_renders_macos_symbols_in_order() {
+        assert_eq!(default_bind(Action::LeftHalf).unwrap().hint(), "⌃⌥←");
+        assert_eq!(default_bind(Action::Maximize).unwrap().hint(), "⌃⌥↩");
+        assert_eq!(default_bind(Action::MaximizeHeight).unwrap().hint(), "⌃⌥⇧↑");
+        assert_eq!(default_bind(Action::NextDisplay).unwrap().hint(), "⌃⌥⌘→");
+        assert_eq!(default_bind(Action::TopLeft).unwrap().hint(), "⌃⌥U");
     }
 
     #[test]
