@@ -5,6 +5,8 @@
 //! are expressed as fractions `(x, y, w, h)` of a display's work area, each in `0.0..=1.0`,
 //! so screen size, DPI, and origin never enter the math (idea.md §5.3).
 
+use crate::core::actions::Action;
+
 /// A rectangle in a top-left-origin, fraction-friendly absolute space.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -87,9 +89,34 @@ pub fn display_for(window: Rect, displays: &[Rect]) -> Rect {
     displays[best]
 }
 
+/// The geometry table: the absolute target rect for `action` at cycle `step`, for a window
+/// currently at `_current` on the display with work area `work` (`_displays` carries all
+/// display work areas for cross-display moves). `None` means the action's geometry isn't
+/// implemented yet — the dispatcher logs that. Each action slice (007–019) fills in its arm.
+pub fn target_for(
+    action: Action,
+    step: usize,
+    _current: Rect,
+    work: Rect,
+    _displays: &[Rect],
+) -> Option<Rect> {
+    use Action::*;
+    match action {
+        // Halves cycle ½ → ⅔ → ⅓ (issue 005); `step` selects the size.
+        LeftHalf | RightHalf | TopHalf | BottomHalf => {
+            let cycle = action.as_half().unwrap().cycle();
+            Some(fraction_to_rect(work, cycle[step % cycle.len()]))
+        }
+        // Center Half — centered half-width, full-height column (issue 007).
+        CenterHalf => Some(fraction_to_rect(work, (0.25, 0.0, 0.5, 1.0))),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::actions::Action;
 
     #[test]
     fn left_half_at_origin() {
@@ -169,5 +196,29 @@ mod tests {
         let primary = Rect::new(0.0, 0.0, 1920.0, 1080.0);
         let win = Rect::new(-1000.0, 100.0, 300.0, 300.0);
         assert_eq!(display_for(win, &[primary, secondary]), secondary);
+    }
+
+    #[test]
+    fn target_for_center_half() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        assert_eq!(
+            target_for(Action::CenterHalf, 0, Rect::ZERO, work, &[]),
+            Some(Rect::new(250.0, 0.0, 500.0, 800.0))
+        );
+    }
+
+    #[test]
+    fn target_for_left_half_cycles_with_step() {
+        let work = Rect::new(0.0, 0.0, 1200.0, 800.0);
+        let at = |step| target_for(Action::LeftHalf, step, Rect::ZERO, work, &[]);
+        assert_eq!(at(0), Some(Rect::new(0.0, 0.0, 600.0, 800.0))); // ½
+        assert_eq!(at(1), Some(Rect::new(0.0, 0.0, 800.0, 800.0))); // ⅔
+        assert_eq!(at(2), Some(Rect::new(0.0, 0.0, 400.0, 800.0))); // ⅓
+    }
+
+    #[test]
+    fn target_for_unimplemented_action_is_none() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        assert_eq!(target_for(Action::Maximize, 0, Rect::ZERO, work, &[]), None);
     }
 }

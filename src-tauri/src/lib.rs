@@ -26,27 +26,23 @@ fn greet(name: &str) -> String {
 /// Route a fired action. The four directional halves run the cycling snap (§7); every other
 /// action logs a placeholder until its slice lands (geometry 007–019, soft beep 021).
 fn dispatch(app: &tauri::AppHandle, action: Action) {
-    // Restore returns the focused window to its pre-snap baseline (§7).
-    if action == Action::Restore {
-        let _ = app.run_on_main_thread(move || {
-            let mut state = SNAP_STATE.lock().unwrap();
+    // AppKit / Accessibility calls must run on the main thread.
+    let _ = app.run_on_main_thread(move || {
+        let mut state = SNAP_STATE.lock().unwrap();
+        // Restore returns the focused window to its pre-snap baseline (§7); every other action
+        // runs through the geometry table + state machine.
+        if action == Action::Restore {
             match platform::restore(&mut state) {
                 Ok(true) => {}
                 Ok(false) => println!("[jc-grid-manager] nothing to restore"),
                 Err(e) => eprintln!("[jc-grid-manager] restore — {e}"),
             }
-        });
-        return;
-    }
-    if action.as_half().is_none() {
-        println!("[jc-grid-manager] {} not implemented", action.label());
-        return;
-    }
-    // AppKit / Accessibility calls must run on the main thread.
-    let _ = app.run_on_main_thread(move || {
-        let mut state = SNAP_STATE.lock().unwrap();
-        if let Err(e) = platform::snap_cycling(action, &mut state) {
-            eprintln!("[jc-grid-manager] {} — {e}", action.label());
+            return;
+        }
+        match platform::perform(action, &mut state) {
+            Ok(true) => {}
+            Ok(false) => println!("[jc-grid-manager] {} not implemented", action.label()),
+            Err(e) => eprintln!("[jc-grid-manager] {} — {e}", action.label()),
         }
     });
 }

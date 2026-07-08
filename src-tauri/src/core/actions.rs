@@ -243,6 +243,16 @@ impl Action {
     pub fn from_id(id: &str) -> Option<Action> {
         Action::ALL.into_iter().find(|a| a.id() == id)
     }
+
+    /// Number of size-cycle steps: the four directional halves cycle ½→⅔→⅓ (3); every other
+    /// action is a single, direct placement (1). Drives the snap state machine (§7).
+    pub fn cycle_len(self) -> usize {
+        if self.as_half().is_some() {
+            3
+        } else {
+            1
+        }
+    }
 }
 
 #[cfg(test)]

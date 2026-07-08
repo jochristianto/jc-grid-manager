@@ -58,24 +58,27 @@ fn platform() -> stub::StubPlatform {
     stub::StubPlatform
 }
 
-/// Snap the focused window per the §7 cycling state machine: repeating the same directional
-/// action advances ½ → ⅔ → ⅓; a different action / window / display starts fresh. `state`
-/// carries the run across presses (see [`SnapState`]); the actual resulting frame is re-read
-/// after the move so terminals and min-size windows still cycle correctly.
-pub fn snap_cycling(action: Action, state: &mut SnapState) -> Result<(), String> {
-    let half = action
-        .as_half()
-        .ok_or_else(|| format!("{} does not cycle", action.label()))?;
-
+/// Perform `action` on the focused window through the §7 state machine: geometry comes from
+/// [`crate::core::geometry::target_for`], the state machine decides the cycle step and restore
+/// baseline, and the resulting frame is re-read after the move so terminals / min-size windows
+/// still cycle correctly. `Ok(false)` means the action's geometry isn't implemented yet — a
+/// graceful "not implemented" the caller logs.
+pub fn perform(action: Action, state: &mut SnapState) -> Result<bool, String> {
     let p = platform();
     let win = p.focused_window()?;
     let current = p.frame(&win);
     let work = p.work_area(&win);
+    let displays = p.displays();
 
-    let target = state.next_target(action, &half.cycle(), current, work);
+    let target = state.next_target(action, current, work, action.cycle_len(), |step| {
+        crate::core::geometry::target_for(action, step, current, work, &displays)
+    });
+    let Some(target) = target else {
+        return Ok(false);
+    };
     p.set_frame(&win, target)?;
     state.record_result(p.frame(&win));
-    Ok(())
+    Ok(true)
 }
 
 /// Return the focused window to the baseline captured before its current snap run, then clear
