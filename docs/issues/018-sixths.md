@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | none (menu-only sub-menu; user may bind) |
 | **Source** | `docs/idea.md` §4 (Sub-menus → Sixths [review]) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -61,13 +61,16 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:51 WIB
+- **Finished:** 2026-07-08 18:53 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added six `target_for` arms for the 3-across × 2-down grid (per the design review — not vertical
+sixths): each cell ⅓ wide × ½ tall, positional names Top/Bottom × Left/Center/Right. Menu-only (no
+default binds). Unit test verifies the six cells tile the work area with no gaps/overlaps.
+`cargo test` → 45 pass.
 
 ## Suggested commit message
 

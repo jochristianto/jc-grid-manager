@@ -177,6 +177,13 @@ pub fn target_for(
         SecondFourth => Some(fraction_to_rect(work, (0.25, 0.0, 0.25, 1.0))),
         ThirdFourth => Some(fraction_to_rect(work, (0.5, 0.0, 0.25, 1.0))),
         LastFourth => Some(fraction_to_rect(work, (0.75, 0.0, 0.25, 1.0))),
+        // Sixths — 3-across × 2-down grid, each cell ⅓ wide × ½ tall (issue 018).
+        SixthTopLeft => Some(fraction_to_rect(work, (0.0, 0.0, 1.0 / 3.0, 0.5))),
+        SixthTopCenter => Some(fraction_to_rect(work, (1.0 / 3.0, 0.0, 1.0 / 3.0, 0.5))),
+        SixthTopRight => Some(fraction_to_rect(work, (2.0 / 3.0, 0.0, 1.0 / 3.0, 0.5))),
+        SixthBottomLeft => Some(fraction_to_rect(work, (0.0, 0.5, 1.0 / 3.0, 0.5))),
+        SixthBottomCenter => Some(fraction_to_rect(work, (1.0 / 3.0, 0.5, 1.0 / 3.0, 0.5))),
+        SixthBottomRight => Some(fraction_to_rect(work, (2.0 / 3.0, 0.5, 1.0 / 3.0, 0.5))),
         _ => None,
     }
 }
@@ -423,5 +430,17 @@ mod tests {
         assert_eq!(f(Action::SecondFourth), Rect::new(200.0, 0.0, 200.0, 600.0));
         assert_eq!(f(Action::ThirdFourth), Rect::new(400.0, 0.0, 200.0, 600.0));
         assert_eq!(f(Action::LastFourth), Rect::new(600.0, 0.0, 200.0, 600.0));
+    }
+
+    #[test]
+    fn target_for_sixths_tile_work_area() {
+        let work = Rect::new(0.0, 0.0, 900.0, 800.0);
+        let f = |a| target_for(a, 0, Rect::ZERO, work, &[]).unwrap();
+        assert_eq!(f(Action::SixthTopLeft), Rect::new(0.0, 0.0, 300.0, 400.0));
+        assert_eq!(f(Action::SixthTopCenter), Rect::new(300.0, 0.0, 300.0, 400.0));
+        assert_eq!(f(Action::SixthTopRight), Rect::new(600.0, 0.0, 300.0, 400.0));
+        assert_eq!(f(Action::SixthBottomLeft), Rect::new(0.0, 400.0, 300.0, 400.0));
+        assert_eq!(f(Action::SixthBottomCenter), Rect::new(300.0, 400.0, 300.0, 400.0));
+        assert_eq!(f(Action::SixthBottomRight), Rect::new(600.0, 400.0, 300.0, 400.0));
     }
 }
