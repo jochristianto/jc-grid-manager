@@ -8,7 +8,7 @@
 | **Blocks** | — |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §5.3 (Windows note), §10, §11 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done (type-checked for Windows; mixed-DPI hardware smoke pending) |
 
 ## Summary
 
@@ -59,22 +59,65 @@ declared DPI awareness and what you tested on); do NOT git commit; refine the Su
 the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 22:22 WIB
+- **Finished:** 2026-07-08 22:26 WIB
+- **Duration:** ~4m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Made the Windows shim honest on mixed-DPI multi-monitor setups by declaring
+**per-monitor-DPI-v2** awareness at startup. No core changes — it's fraction-based already; this
+just makes the shim's pixel numbers true across displays.
+
+**What changed**
+- **`platform/windows.rs`** — `ensure_dpi_awareness()`:
+  `SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)`, then reads back
+  `GetThreadDpiAwarenessContext` + `AreDpiAwarenessContextsEqual` and logs whether the process
+  ended up v2-aware (the runtime-verifiable check the acceptance asks for). Best-effort +
+  idempotent: if awareness was already set (Tauri/tao may set a context during init), the `Set`
+  fails harmlessly and we keep the active context.
+- **`platform/mod.rs`** — `ensure_dpi_awareness()` boundary fn (Windows → the above; **no-op off
+  Windows** — macOS points are DPI-independent).
+- **`lib.rs`** — calls `platform::ensure_dpi_awareness()` as the **first line of `run()`**, before
+  `tauri::Builder`, i.e. before any window or monitor query.
+- **`Cargo.toml`** — added the `Win32_UI_HiDpi` feature (no `Cargo.lock` change; the sub-crates were
+  already resolved via other `windows` features).
+- The `frame`/`set_frame`/`work_area`/`displays` paths need no edits: under v2 awareness they
+  already return consistent physical pixels (`GetWindowRect`/`SetWindowPos`/`GetMonitorInfoW`), and
+  a monitor at negative virtual coords is carried through `Rect`'s origin unchanged — the same way
+  macOS handles a display left of the primary.
+
+**Key decisions / deviations**
+- **Runtime `SetProcessDpiAwarenessContext`, not a manifest.** The API call is toolchain-free
+  (embedding a `dpiAware` manifest needs the resource compiler this dev box lacks) and, called as
+  the very first thing in `run()`, wins before tao would set a context. A manifest declaration
+  remains a valid alternative for packaging if ever needed.
+- Kept it best-effort: even if a context is already established, we log the effective state rather
+  than fail, so the user can confirm "per-monitor-DPI-v2 aware: true" in the console.
+
+**Verification** (macOS dev box — no Windows hardware)
+- Cross-checked the HiDpi API (`SetProcessDpiAwarenessContext` / `GetThreadDpiAwarenessContext` /
+  `AreDpiAwarenessContextsEqual` / `DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2`) in the isolated
+  crate: `cargo check --target x86_64-pc-windows-msvc` → clean.
+- `windows.rs` + the `lib.rs` call type-check cleanly for `x86_64-pc-windows-msvc` (via the
+  temporary `build.rs` no-op; `build.rs` unchanged in the commit).
+- macOS unaffected: `cargo test` 68 pass, `cargo clippy --all-targets` clean.
+- **Not run here (needs Windows + two monitors at different scales):** confirm the log prints
+  v2-aware; snap halves/corners/Maximize on a 150% panel + a 100% external and check edges are
+  flush; verify a monitor at negative virtual coords; confirm no single-monitor regression. Flagged
+  for the user (the §10 real-hardware smoke).
 
 ## Suggested commit message
 
 ```
-fix(windows): declare per-monitor-DPI-v2 and fix mixed-DPI multi-monitor snaps
+fix(windows): declare per-monitor-DPI-v2 for mixed-DPI multi-monitor snaps
 
-Run as per-monitor-DPI-v2 aware so Win32 returns true physical pixels; snapping
-now lands correctly across monitors with different scale factors and negative
-virtual coordinates.
+Call SetProcessDpiAwarenessContext(PER_MONITOR_AWARE_V2) first thing in run(),
+before any window/monitor query, so Win32 returns true physical pixels across
+displays with different scale factors (and negative virtual coordinates). Log the
+effective awareness so it's verifiable at runtime. Best-effort/idempotent; no core
+changes (it's fraction-based). Cross-checked for x86_64-pc-windows-msvc; the
+mixed-DPI hardware smoke needs a Windows machine.
 ```

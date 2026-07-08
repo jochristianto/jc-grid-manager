@@ -216,6 +216,16 @@ pub fn open_accessibility_settings() {
     }
 }
 
+/// Declare per-monitor-DPI-v2 awareness on Windows so the shim reports true physical pixels on
+/// mixed-DPI multi-monitor setups (idea.md §5.3, issue 026). Must run before any window/monitor
+/// query. No-op elsewhere (macOS points are DPI-independent).
+pub fn ensure_dpi_awareness() {
+    #[cfg(target_os = "windows")]
+    {
+        windows::ensure_dpi_awareness();
+    }
+}
+
 /// Placeholder for platforms without a real shim yet (e.g. Linux dev machines). macOS and Windows
 /// have real implementations; this keeps the crate building elsewhere.
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]

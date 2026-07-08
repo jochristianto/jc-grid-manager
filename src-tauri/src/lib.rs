@@ -77,6 +77,10 @@ pub(crate) fn dispatch(app: &tauri::AppHandle, action: Action) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Declare per-monitor-DPI-v2 awareness before any window/monitor query (issue 026) so the
+    // Windows shim reports true physical pixels on mixed-DPI setups. No-op off Windows.
+    platform::ensure_dpi_awareness();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // Launch at login (idea.md §8) — off by default; toggled via get/set_autostart. The OS

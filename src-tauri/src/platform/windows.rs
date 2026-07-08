@@ -19,6 +19,10 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
+use windows::Win32::UI::HiDpi::{
+    AreDpiAwarenessContextsEqual, GetThreadDpiAwarenessContext, SetProcessDpiAwarenessContext,
+    DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, SetWindowPos, HWND_TOP,
     SWP_NOACTIVATE, SWP_NOZORDER,
@@ -26,6 +30,27 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use super::{Platform, WindowIdentity};
 use crate::core::geometry::{display_for, Rect};
+
+/// Declare per-monitor-DPI-v2 awareness (idea.md §5.3) so Win32 reports **true physical pixels**
+/// across mixed-DPI monitors, instead of the DPI-virtualized coordinates an unaware process gets on
+/// secondary displays. The shared core already works in work-area fractions, so once the shim's
+/// numbers are honest, multi-monitor "just works".
+///
+/// Best-effort and idempotent: it must run before any window/monitor query, so [`crate::run`] calls
+/// it first thing. If the process is already aware (Tauri/tao may set a context during init), the
+/// `Set` call fails harmlessly and we keep whatever context is active — logging whether it ended up
+/// v2 so the runtime state is verifiable.
+pub fn ensure_dpi_awareness() {
+    unsafe {
+        // `let _`: setting fails if awareness was already established (manifest or a prior call);
+        // that's fine — we only need the process to end up per-monitor-v2 aware.
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        let ctx = GetThreadDpiAwarenessContext();
+        let is_v2 =
+            AreDpiAwarenessContextsEqual(ctx, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).as_bool();
+        println!("[jc-grid-manager] per-monitor-DPI-v2 aware: {is_v2}");
+    }
+}
 
 /// The Windows implementation of [`Platform`]. `HWND` is a plain copyable handle, so there is no
 /// owned-resource wrapper (unlike the macOS `AxWindow`).
