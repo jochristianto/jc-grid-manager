@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | Next `⌃⌥⌘→`, Previous `⌃⌥⌘←` (Windows: **Ctrl+Alt+Win+←/→**) |
 | **Source** | `docs/idea.md` §4 (Displays), §5.4, §11 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -67,13 +67,30 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:53 WIB
+- **Finished:** 2026-07-08 18:58 WIB
+- **Duration:** ~5m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Last action slice — completes the fan-out. Added `display_move(win, src, displays, forward)`:
+orders displays left→right by work-area origin (x, then y), finds the window's current display,
+picks the next/previous (wrapping), and transfers the window's fractional rect from the source
+work area to the destination (clamped into it). NextDisplay/PreviousDisplay arms call it;
+`⌃⌥⌘→`/`⌃⌥⌘←` (from 004) now functional.
+
+**Display order (was a documented recommendation):** used left→right by origin — the least-
+surprising "next." Single-display is a graceful no-op (returns None). The Windows `Ctrl+Alt+Win`
+conflict noted in §5.4 is verified in issue 027, not here.
+
+Un-underscored `target_for`'s `displays` param and — now that every action has an arm — replaced
+the `_ => None` fallback with an explicit `Restore => None` (Restore is handled by the dispatcher),
+making `target_for` **exhaustive over `Action`** so a future variant can't be silently dropped.
+Also updated the dispatcher's no-op log (an action that produced no move now reads "nothing to do"
+rather than "not implemented"; a soft beep replaces it in 021).
+
+Tests: relative-rect transfer to a differently-sized display, wrap-around, single-display no-op.
+`cargo test` → 47 pass. **Action fan-out (007–019) complete.**
 
 ## Suggested commit message
 

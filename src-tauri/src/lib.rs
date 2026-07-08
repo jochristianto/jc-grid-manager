@@ -41,7 +41,7 @@ fn dispatch(app: &tauri::AppHandle, action: Action) {
         }
         match platform::perform(action, &mut state) {
             Ok(true) => {}
-            Ok(false) => println!("[jc-grid-manager] {} not implemented", action.label()),
+            Ok(false) => println!("[jc-grid-manager] {} — nothing to do", action.label()),
             Err(e) => eprintln!("[jc-grid-manager] {} — {e}", action.label()),
         }
     });

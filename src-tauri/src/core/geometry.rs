@@ -110,16 +110,49 @@ fn resize_around_center(win: Rect, work: Rect, dw: f64, dh: f64, min_w: f64, min
     Rect::new(x, y, w, h)
 }
 
+/// Move `win` to the display adjacent to its current one (whose work area is `src`), preserving
+/// its relative rect. Displays are ordered left→right by work-area origin (x, then y); `forward`
+/// picks the next, else the previous, wrapping around. `None` with fewer than two displays.
+fn display_move(win: Rect, src: Rect, displays: &[Rect], forward: bool) -> Option<Rect> {
+    if displays.len() < 2 {
+        return None;
+    }
+    let mut order = displays.to_vec();
+    order.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+    let idx = order
+        .iter()
+        .position(|d| (d.x - src.x).abs() < 1.0 && (d.y - src.y).abs() < 1.0)?;
+    let n = order.len();
+    let dst = if forward {
+        order[(idx + 1) % n]
+    } else {
+        order[(idx + n - 1) % n]
+    };
+    // Transfer the window's fractional rect from src to dst, then clamp into dst.
+    let frac = (
+        (win.x - src.x) / src.w,
+        (win.y - src.y) / src.h,
+        win.w / src.w,
+        win.h / src.h,
+    );
+    let mut out = fraction_to_rect(dst, frac);
+    out.w = out.w.min(dst.w);
+    out.h = out.h.min(dst.h);
+    out.x = out.x.clamp(dst.x, dst.x + dst.w - out.w);
+    out.y = out.y.clamp(dst.y, dst.y + dst.h - out.h);
+    Some(out)
+}
+
 /// The geometry table: the absolute target rect for `action` at cycle `step`, for a window
-/// currently at `current` on the display with work area `work` (`_displays` carries all
-/// display work areas for cross-display moves). `None` means the action's geometry isn't
-/// implemented yet — the dispatcher logs that. Each action slice (007–019) fills in its arm.
+/// currently at `current` on the display with work area `work` (`displays` carries all display
+/// work areas, for cross-display moves). `None` means the action produced no move (e.g. a
+/// display move with a single display). Every action has an arm; Restore is handled upstream.
 pub fn target_for(
     action: Action,
     step: usize,
     current: Rect,
     work: Rect,
-    _displays: &[Rect],
+    displays: &[Rect],
 ) -> Option<Rect> {
     use Action::*;
     match action {
@@ -184,7 +217,12 @@ pub fn target_for(
         SixthBottomLeft => Some(fraction_to_rect(work, (0.0, 0.5, 1.0 / 3.0, 0.5))),
         SixthBottomCenter => Some(fraction_to_rect(work, (1.0 / 3.0, 0.5, 1.0 / 3.0, 0.5))),
         SixthBottomRight => Some(fraction_to_rect(work, (2.0 / 3.0, 0.5, 1.0 / 3.0, 0.5))),
-        _ => None,
+        // Next / Previous Display — move to the adjacent display, keeping the relative rect (019).
+        NextDisplay | PreviousDisplay => {
+            display_move(current, work, displays, matches!(action, NextDisplay))
+        }
+        // Restore has no table geometry — the dispatcher handles it directly.
+        Restore => None,
     }
 }
 
@@ -442,5 +480,29 @@ mod tests {
         assert_eq!(f(Action::SixthBottomLeft), Rect::new(0.0, 400.0, 300.0, 400.0));
         assert_eq!(f(Action::SixthBottomCenter), Rect::new(300.0, 400.0, 300.0, 400.0));
         assert_eq!(f(Action::SixthBottomRight), Rect::new(600.0, 400.0, 300.0, 400.0));
+    }
+
+    #[test]
+    fn target_for_next_display_transfers_relative_rect() {
+        let primary = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let secondary = Rect::new(1000.0, 0.0, 600.0, 800.0); // narrower
+        let win = Rect::new(0.0, 0.0, 500.0, 800.0); // left half of primary
+        let got = target_for(Action::NextDisplay, 0, win, primary, &[primary, secondary]).unwrap();
+        // Same relative rect (left half) on the secondary: x=1000, w=300 (half of 600).
+        assert!((got.x - 1000.0).abs() < 1e-6, "x={}", got.x);
+        assert!((got.w - 300.0).abs() < 1e-6, "w={}", got.w);
+        assert!((got.h - 800.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn target_for_display_move_wraps_and_single_is_noop() {
+        let a = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let b = Rect::new(1000.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(0.0, 0.0, 500.0, 800.0);
+        // From the last display, Next wraps to the first.
+        let got = target_for(Action::NextDisplay, 0, win, b, &[a, b]).unwrap();
+        assert!((got.x - 0.0).abs() < 1e-6);
+        // Single display → graceful no-op (None).
+        assert_eq!(target_for(Action::NextDisplay, 0, win, a, &[a]), None);
     }
 }
