@@ -134,6 +134,38 @@ with your dev certificate.
 > v1 ships **unsigned** — no paid Apple Developer ID / notarization and no Windows Authenticode. Both
 > OSes show a one-time "unknown developer" warning on first launch; there is no auto-updater.
 
+## Releasing (automated)
+
+Releases are cut on GitHub Actions from `main` — you never build installers by hand for a release.
+Versioning is driven by [release-please](https://github.com/googleapis/release-please) reading your
+[Conventional Commits](https://www.conventionalcommits.org/), so the commit style this repo already
+uses (`feat:`, `fix:`, `build:`, `docs:` …) is all it needs.
+
+The flow:
+
+1. **Push normal commits to `main`.** release-please opens (and keeps updating) a **Release PR** that
+   bumps the version and writes `CHANGELOG.md` from your commits — `fix:` → patch, `feat:` → minor
+   (breaking changes stay within `0.x` until you're ready for `1.0`).
+2. **Merge the Release PR** when you want to ship. That publishes a GitHub Release and a `vX.Y.Z` tag.
+3. **CI builds the installers** on macOS + Windows runners and attaches them to that release: a
+   **universal `.dmg`** (Intel + Apple Silicon) and a Windows **`.msi`**. They appear on the release a
+   few minutes after it goes live.
+
+The version is bumped in lockstep across [`package.json`](package.json),
+[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json), and
+[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) by the release PR. `src-tauri/Cargo.lock` isn't touched
+by the bump; `cargo` refreshes its version field on the next build, so it self-heals (harmless if it
+lags by a commit). No secrets are required because v1 ships unsigned — the workflow just uses the
+built-in `GITHUB_TOKEN`.
+
+Config lives in [`release-please-config.json`](release-please-config.json),
+[`.release-please-manifest.json`](.release-please-manifest.json), and the workflow
+[`.github/workflows/release.yml`](.github/workflows/release.yml).
+
+> **One-time repo setting:** allow Actions to open PRs — **Settings → Actions → General → Workflow
+> permissions** → enable _"Allow GitHub Actions to create and approve pull requests"_ (and keep
+> _Read and write permissions_). Without it, release-please can't open the Release PR.
+
 ## Install & first run
 
 End-user install steps (getting past Gatekeeper / SmartScreen, granting Accessibility, the
