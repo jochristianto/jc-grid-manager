@@ -69,20 +69,81 @@ Bookkeeping (required):
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- YYYY-MM-DD HH:MM TZ -->_
-- **Finished:** _<!-- YYYY-MM-DD HH:MM TZ -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 17:06 WIB (+0700)
+- **Finished:** 2026-07-08 17:09 WIB (+0700)
+- **Duration:** ~3 minutes of wall-clock agent time (most of the effort was source-diving the Tauri v2 CLI to confirm exactly what `APPLE_SIGNING_IDENTITY` does and doesn't cover; excludes the user's own one-time manual cert-creation step, which is not yet done)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Documentation-only change (per the issue's own recommendation: env var, not
+committed config). No files under `src-tauri/` or `src/` were touched — that
+tree had concurrent, unrelated Rust changes in flight at the time.
+
+**What was set up:**
+
+- `docs/dev-signing.md` (new) — the reproducible guide:
+  - Cert creation via Keychain Access GUI (Certificate Assistant → Create a
+    Certificate…, type **Code Signing**, name **`JC Grid Manager Dev`**) and
+    an equivalent scripted `openssl` + `security import` + `security
+    add-trusted-cert` CLI flow, plus a `security find-identity -v -p
+    codesigning` / `codesign -dvv` verification step.
+  - How `APPLE_SIGNING_IDENTITY` is read by the Tauri CLI at build time and
+    overrides `tauri.conf.json > bundle > macOS > signingIdentity` (so no
+    config file needs to change), and how to load it from `.env` via `set -a;
+    source .env; set +a` before `pnpm tauri build`.
+  - The `tccutil reset Accessibility com.jochristianto.jcgridmanager`
+    recovery escape hatch (cross-referenced from issue 030's onboarding
+    flow).
+- `.env.example` (new) — documents `APPLE_SIGNING_IDENTITY="JC Grid Manager
+  Dev"` as the expected shape; no machine-specific value is committed.
+- `.gitignore` — already ignored `.env`/`.env.*` with a `!.env.example`
+  carve-out before this change; verified with `git check-ignore` and left
+  untouched (no edit needed).
+- `README.md` — added a one-line pointer to `docs/dev-signing.md` under a new
+  "macOS dev signing" heading.
+
+**Decisions:**
+
+- Env var over config, per the issue's own recommendation — `tauri.conf.json`
+  was not touched (and per the task constraints, would not have been even if
+  it seemed necessary; it didn't).
+- Documented both the GUI and CLI cert-creation paths in full, as requested,
+  rather than picking one.
+
+**Gotcha found during research (important for whoever verifies this):**
+`APPLE_SIGNING_IDENTITY` is only consumed by Tauri's bundler code path
+(`tauri build` / `tauri build --debug` / `tauri bundle`) — confirmed by
+reading the Tauri v2 CLI source (`crates/tauri-cli/src/interface/rust.rs`
+reads the env var inside bundle-settings construction; `crates/tauri-cli/
+src/interface/rust/desktop.rs`'s `run_dev`/`cargo_command` shells out to
+`cargo run` directly and never touches the `tauri-macos-sign`/bundler code).
+**`pnpm tauri dev` does not go through that path at all**, so setting the env
+var alone does not sign whatever `tauri dev` launches. The doc recommends
+verifying Accessibility-dependent behavior via `pnpm tauri build --debug` +
+launching the resulting `.app` (path documented, matches the real
+`productName`, `jc-grid-manager`, not the issue's illustrative "JC Grid
+Manager.app") instead of `pnpm tauri dev`, and notes a possible future fix
+(a Cargo `runner` wrapper in `src-tauri/.cargo/config.toml`) without
+implementing it, since that would touch `src-tauri/` and is out of scope
+here. This is flagged clearly in `docs/dev-signing.md` so it isn't lost.
+
+**Not done (deliberately):** did not create the certificate (user's one-time
+manual step), did not run any `tauri`/`cargo` commands, did not edit
+`tauri.conf.json` or anything under `src-tauri/`/`src/`, did not check off
+acceptance criteria above (they depend on the user's manual verification) or
+touch `docs/issues/README.md`.
 
 ## Suggested commit message
 
 ```
-build(macos): sign local builds with a stable self-signed identity
+docs(macos): document a stable self-signed dev code-signing identity
 
-Keep the code identity constant across rebuilds so the Accessibility grant
-no longer resets every build. Document cert creation and the tccutil reset
-recovery step.
+Add docs/dev-signing.md covering certificate creation (Keychain Access GUI
+and an equivalent openssl/security CLI flow), wiring the identity via the
+APPLE_SIGNING_IDENTITY env var (.env.example + existing .gitignore rule,
+nothing hardcoded/committed), and the tccutil reset recovery escape hatch.
+Notes that `pnpm tauri dev` doesn't consume the env var today (only
+`tauri build`/`bundle` do) and recommends `pnpm tauri build --debug` for
+verifying Accessibility-gated behavior in the meantime. No src-tauri/ or
+tauri.conf.json changes.
 ```
