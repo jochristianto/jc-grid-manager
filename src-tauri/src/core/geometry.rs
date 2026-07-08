@@ -121,6 +121,8 @@ pub fn target_for(
         TopRight => Some(fraction_to_rect(work, (0.5, 0.0, 0.5, 0.5))),
         BottomLeft => Some(fraction_to_rect(work, (0.0, 0.5, 0.5, 0.5))),
         BottomRight => Some(fraction_to_rect(work, (0.5, 0.5, 0.5, 0.5))),
+        // Maximize — fill the work area, not native fullscreen (issue 011).
+        Maximize => Some(fraction_to_rect(work, (0.0, 0.0, 1.0, 1.0))),
         _ => None,
     }
 }
@@ -260,5 +262,11 @@ mod tests {
         assert_eq!(f(Action::TopRight), Rect::new(500.0, 0.0, 500.0, 400.0));
         assert_eq!(f(Action::BottomLeft), Rect::new(0.0, 400.0, 500.0, 400.0));
         assert_eq!(f(Action::BottomRight), Rect::new(500.0, 400.0, 500.0, 400.0));
+    }
+
+    #[test]
+    fn target_for_maximize_fills_work_area() {
+        let work = Rect::new(100.0, 50.0, 1000.0, 800.0);
+        assert_eq!(target_for(Action::Maximize, 0, Rect::ZERO, work, &[]), Some(work));
     }
 }

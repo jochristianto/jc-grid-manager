@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | `⌃⌥↩` (Control+Option+Return) |
 | **Source** | `docs/idea.md` §4 (Sizing → Maximize) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -58,13 +58,16 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:33 WIB
+- **Finished:** 2026-07-08 18:35 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added the `Maximize` arm `(0,0,1,1)` — fills the window's display work area (not native
+fullscreen; respects the menu bar). Bind `⌃⌥↩` (from 004) now functional. Because every action
+flows through the state machine (since 007), Maximize captures a restore baseline automatically,
+so `⌃⌥⌫` un-maximizes — no extra work. `cargo test` → 35 pass.
 
 ## Suggested commit message
 
