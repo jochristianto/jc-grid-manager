@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | `⌃⌥C` (Control+Option+C) |
 | **Source** | `docs/idea.md` §4 (Sizing → Center) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -59,13 +59,16 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:40 WIB
+- **Finished:** 2026-07-08 18:42 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added `Center` — keeps the current size and centers it in the work area:
+`x = work.x + max((work.w - current.w)/2, 0)`, likewise for y. The `max(…, 0)` clamps a window
+larger than the work area to the top/left edge instead of pushing it off-screen. Bind `⌃⌥C` (from
+004) now functional. Tests cover the normal centering and the oversized clamp. `cargo test` → 38 pass.
 
 ## Suggested commit message
 

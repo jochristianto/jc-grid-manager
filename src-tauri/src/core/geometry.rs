@@ -135,6 +135,13 @@ pub fn target_for(
         // Maximize Height — full work-area height, current width + x kept (issue 013). Setting
         // y/h to the work area's own values inherently clamps a vertically-offscreen window.
         MaximizeHeight => Some(Rect::new(current.x, work.y, current.w, work.h)),
+        // Center — keep the current size, center in the work area; the max(…, 0) clamps a
+        // window bigger than the work area to the top/left edge, not off-screen (issue 014).
+        Center => {
+            let x = work.x + ((work.w - current.w) / 2.0).max(0.0);
+            let y = work.y + ((work.h - current.h) / 2.0).max(0.0);
+            Some(Rect::new(x, y, current.w, current.h))
+        }
         _ => None,
     }
 }
@@ -295,6 +302,27 @@ mod tests {
         assert_eq!(
             target_for(Action::MaximizeHeight, 0, win, work, &[]),
             Some(Rect::new(120.0, 0.0, 350.0, 800.0))
+        );
+    }
+
+    #[test]
+    fn target_for_center_keeps_size_and_centers() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(0.0, 0.0, 400.0, 200.0);
+        assert_eq!(
+            target_for(Action::Center, 0, win, work, &[]),
+            Some(Rect::new(300.0, 300.0, 400.0, 200.0))
+        );
+    }
+
+    #[test]
+    fn target_for_center_clamps_oversized_window() {
+        let work = Rect::new(10.0, 20.0, 500.0, 400.0);
+        let win = Rect::new(0.0, 0.0, 800.0, 300.0); // wider than the work area
+        // x clamps to work.x; y centers: 20 + (400-300)/2 = 70.
+        assert_eq!(
+            target_for(Action::Center, 0, win, work, &[]),
+            Some(Rect::new(10.0, 70.0, 800.0, 300.0))
         );
     }
 }
