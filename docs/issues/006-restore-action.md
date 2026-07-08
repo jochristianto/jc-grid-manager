@@ -8,7 +8,7 @@
 | **Blocks** | — (exposed in the tray menu, 024) |
 | **Default shortcut** | `⌃⌥⌫` (Control+Option+Delete) |
 | **Source** | `docs/idea.md` §4 (Sizing → Restore), §7 (Restore) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -60,19 +60,38 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:09 WIB
+- **Finished:** 2026-07-08 18:14 WIB
+- **Duration:** ~5m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Small slice on top of 005's baseline.
+
+**What changed**
+- `platform/mod.rs`: added `restore(state) -> Result<bool, String>` — peek `state.baseline()`;
+  if present, `focused_window` → `set_frame(baseline)` → `state.clear()`. Returns `Ok(true)`
+  (restored), `Ok(false)` (no baseline — graceful no-op), or `Err` (I/O failure). The record is
+  cleared **only after a successful move**, so a failed `set_frame` keeps the baseline for a retry.
+- `lib.rs`: `dispatch` special-cases `Action::Restore` before the halves — runs `restore` on the
+  main thread; a `false` result logs "nothing to restore" (a soft beep replaces this in 021).
+- `⌃⌥⌫` was already in 004's default table; this makes it functional.
+- Reused 005's `baseline()` + `clear()` (no new tracking, per the constraint) — they are now
+  production-used, so their `#[allow(dead_code)]` markers came off.
+
+**Verification:** `cargo test` → 27 pass (the restore-transition test asserts baseline returned
+then emptied). `cargo clippy` → clean. Manual (snap + cycle a window, press `⌃⌥⌫` → returns to
+the exact pre-snap frame; press with nothing snapped → logs "nothing to restore") is user-side.
+
+This completes the Foundation band (001–006).
 
 ## Suggested commit message
 
 ```
 feat(core): add Restore action (⌃⌥⌫)
 
-Return the focused window to its pre-snap baseline and clear the snap record.
-No-op with a graceful signal when there is no baseline.
+Return the focused window to its pre-snap baseline and clear the snap record;
+the record is cleared only after a successful move, so a failed set_frame keeps
+the baseline. No-op with a graceful log when there is no baseline (soft beep
+arrives in 021).
 ```

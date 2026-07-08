@@ -59,7 +59,7 @@ Foundation **001–006** first. Then the action slices **007–019** in any orde
 
 Move an issue's box as it progresses. `☐` not started · `◐` in progress · `☑` done.
 
-- Foundation: ☑ 001 · ☑ 002 · ☑ 003 · ☑ 004 · ☑ 005 · ☐ 006
+- Foundation: ☑ 001 · ☑ 002 · ☑ 003 · ☑ 004 · ☑ 005 · ☑ 006
 - Actions: ☐ 007 · ☐ 008 · ☐ 009 · ☐ 010 · ☐ 011 · ☐ 012 · ☐ 013 · ☐ 014 · ☐ 015 · ☐ 016 · ☐ 017 · ☐ 018 · ☐ 019
 - System: ☐ 020 · ☐ 021 · ☐ 022 · ☐ 023 · ☐ 024
 - Windows: ☐ 025 · ☐ 026 · ☐ 027

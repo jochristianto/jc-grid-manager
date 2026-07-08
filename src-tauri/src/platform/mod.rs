@@ -78,6 +78,21 @@ pub fn snap_cycling(action: Action, state: &mut SnapState) -> Result<(), String>
     Ok(())
 }
 
+/// Return the focused window to the baseline captured before its current snap run, then clear
+/// the run (idea.md §7). `Ok(false)` means there was no baseline — a graceful no-op the caller
+/// reports (a soft beep arrives in 021). The record is cleared only after a successful move, so
+/// a failed `set_frame` keeps the baseline for a retry.
+pub fn restore(state: &mut SnapState) -> Result<bool, String> {
+    let Some(baseline) = state.baseline() else {
+        return Ok(false);
+    };
+    let p = platform();
+    let win = p.focused_window()?;
+    p.set_frame(&win, baseline)?;
+    state.clear();
+    Ok(true)
+}
+
 /// Non-macOS placeholder so the crate builds off macOS. Real Windows I/O lands in 025.
 #[cfg(not(target_os = "macos"))]
 mod stub {

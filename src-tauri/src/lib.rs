@@ -26,6 +26,18 @@ fn greet(name: &str) -> String {
 /// Route a fired action. The four directional halves run the cycling snap (§7); every other
 /// action logs a placeholder until its slice lands (geometry 007–019, soft beep 021).
 fn dispatch(app: &tauri::AppHandle, action: Action) {
+    // Restore returns the focused window to its pre-snap baseline (§7).
+    if action == Action::Restore {
+        let _ = app.run_on_main_thread(move || {
+            let mut state = SNAP_STATE.lock().unwrap();
+            match platform::restore(&mut state) {
+                Ok(true) => {}
+                Ok(false) => println!("[jc-grid-manager] nothing to restore"),
+                Err(e) => eprintln!("[jc-grid-manager] restore — {e}"),
+            }
+        });
+        return;
+    }
     if action.as_half().is_none() {
         println!("[jc-grid-manager] {} not implemented", action.label());
         return;

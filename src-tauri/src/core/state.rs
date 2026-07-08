@@ -92,14 +92,12 @@ impl SnapState {
         }
     }
 
-    /// The restore baseline for the current run, if any.
-    #[allow(dead_code)] // consumed by issue 006 (Restore)
+    /// The restore baseline for the current run, if any (what Restore returns the window to).
     pub fn baseline(&self) -> Option<Rect> {
         self.record.map(|r| r.baseline)
     }
 
     /// Forget the current run (Restore calls this after returning to the baseline).
-    #[allow(dead_code)] // consumed by issue 006 (Restore)
     pub fn clear(&mut self) {
         self.record = None;
     }
@@ -193,10 +191,12 @@ mod tests {
     }
 
     #[test]
-    fn baseline_is_queryable_and_clearable() {
+    fn restore_reads_baseline_then_clears() {
         let mut s = SnapState::new();
-        s.next_target(Action::LeftHalf, &left(), Rect::new(5.0, 5.0, 100.0, 100.0), WORK);
-        assert!(s.baseline().is_some());
+        let pre_snap = Rect::new(5.0, 5.0, 100.0, 100.0);
+        s.next_target(Action::LeftHalf, &left(), pre_snap, WORK);
+        // The Restore transition: read the pre-snap baseline, then clear the run.
+        assert_eq!(s.baseline(), Some(pre_snap));
         s.clear();
         assert_eq!(s.baseline(), None);
     }
