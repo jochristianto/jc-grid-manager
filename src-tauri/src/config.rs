@@ -15,10 +15,12 @@
 //! - `reset_binding(action: String) -> Result<(), BindingError>`
 //! - `reset_all_bindings() -> Result<(), BindingError>`
 //! - `set_tunable(key: String, value: f64) -> Result<(), BindingError>`
+//! - `get_autostart() -> Result<bool, BindingError>`  — launch-at-login state (issue 023)
+//! - `set_autostart(enabled: bool) -> Result<(), BindingError>`
 //!
 //! Event: `bindings-changed` — emitted after any successful change so an open settings window
 //! can refetch. `BindingError` is `{ code, message }`; codes: `unknown-action`, `unknown-tunable`,
-//! `invalid-value`, `duplicate`, `os-refused`, `io`.
+//! `invalid-value`, `duplicate`, `os-refused`, `autostart`, `io`.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -26,6 +28,7 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri_plugin_autostart::ManagerExt;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::core::actions::Action;
@@ -374,6 +377,40 @@ fn range(value: f64, min: f64, max: f64, key: &str) -> Result<(), BindingError> 
             format!("{key} must be in ({min}, {max}]"),
         ))
     }
+}
+
+// ----- Launch at login (issue 023) -----------------------------------------------------------
+
+/// Whether the app is currently registered to start at login. Reads the OS-registered reality
+/// (the macOS login item / Windows registry key) — the source of truth (§8) that survives a
+/// restart; config just mirrors it for the settings UI.
+#[tauri::command]
+pub fn get_autostart(app: AppHandle) -> Result<bool, BindingError> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|e| BindingError::new("autostart", e.to_string()))
+}
+
+/// Enable or disable launch at login (§8): flip the OS login item first, then mirror the new
+/// state into config so the settings UI and a hand-edited file stay consistent. If the OS
+/// refuses, config is left untouched.
+#[tauri::command]
+pub fn set_autostart(
+    app: AppHandle,
+    state: State<'_, Mutex<ConfigState>>,
+    enabled: bool,
+) -> Result<(), BindingError> {
+    let manager = app.autolaunch();
+    let outcome = if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    outcome.map_err(|e| BindingError::new("autostart", e.to_string()))?;
+
+    let mut guard = state.lock().unwrap();
+    guard.config.autostart = enabled;
+    save(&app, &guard.config).map_err(|e| BindingError::new("io", e))
 }
 
 #[cfg(test)]

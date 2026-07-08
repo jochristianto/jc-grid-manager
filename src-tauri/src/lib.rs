@@ -64,6 +64,12 @@ fn dispatch(app: &tauri::AppHandle, action: Action) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // Launch at login (idea.md §8) — off by default; toggled via get/set_autostart. The OS
+        // login item is the source of truth; config (020) mirrors it for the settings UI.
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, shortcut, event| {
@@ -93,7 +99,9 @@ pub fn run() {
             config::set_binding,
             config::reset_binding,
             config::reset_all_bindings,
-            config::set_tunable
+            config::set_tunable,
+            config::get_autostart,
+            config::set_autostart
         ])
         .setup(|app| {
             // Load the persisted per-machine config (or defaults on first run) and register the
