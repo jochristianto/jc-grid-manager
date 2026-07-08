@@ -13,7 +13,7 @@ download the newer build and reinstall.
 Grab the artifact for your OS from the release you were given:
 
 - **macOS:** `JC Grid Manager_<version>_<arch>.dmg`
-- **Windows:** `JC Grid Manager_<version>_<arch>-setup.exe` (NSIS installer)
+- **Windows:** `JC Grid Manager_<version>_<arch>_<lang>.msi` (WiX installer)
 
 ## macOS
 
@@ -37,9 +37,9 @@ Grab the artifact for your OS from the release you were given:
 
 ## Windows
 
-1. Run the `-setup.exe` installer.
+1. Run the `.msi` installer.
 2. **SmartScreen.** Windows shows *"Windows protected your PC."* This is expected for an unsigned
-   app. Click **More info → Run anyway**, then follow the installer.
+   installer. Click **More info → Run anyway**, then follow the installer.
 3. No special permission is required to manage normal windows. **Admin/elevated windows** can't be
    moved by a non-elevated app — acting on one plays a soft beep instead of doing nothing.
 4. **Shortcut conflicts.** Some `Ctrl+Alt` combos collide with Windows/Intel-graphics behavior

@@ -49,7 +49,7 @@ The full table (including fourths, sixths, move-to-edge, and sizing tunables) li
 | macOS window control | Accessibility API (`AXUIElement`) via `accessibility-sys` / `cocoa` / `core-graphics` |
 | Windows window control | Win32 via `windows-rs` (per-monitor-DPI-v2 aware) |
 | Global shortcuts | `tauri-plugin-global-shortcut` |
-| Packaging | Tauri bundler → `.dmg` (macOS), NSIS `.exe` (Windows) — **unsigned in v1** |
+| Packaging | Tauri bundler → `.dmg` (macOS), `.msi` / WiX (Windows) — **unsigned in v1** |
 
 ## Project structure
 
@@ -112,8 +112,10 @@ pnpm dev            # http://localhost:1420
 
 ## Build the app
 
-Produces optimized installers via the Tauri bundler (targets `app`, `dmg`, and `nsis` are configured
-in [`tauri.conf.json`](src-tauri/tauri.conf.json)):
+Produces optimized installers via the Tauri bundler. The `targets` array in
+[`tauri.conf.json`](src-tauri/tauri.conf.json) is `["app", "dmg", "msi"]`; Tauri applies it on every
+platform but skips targets that don't fit the host, so you get a **`.dmg` on macOS** and an
+**`.msi` on Windows** from the same config:
 
 ```sh
 pnpm tauri build
@@ -122,10 +124,12 @@ pnpm tauri build
 Artifacts land under `src-tauri/target/release/bundle/`:
 
 - **macOS:** `dmg/JC Grid Manager_<version>_<arch>.dmg` (and the `.app` under `macos/`).
-- **Windows:** `nsis/JC Grid Manager_<version>_<arch>-setup.exe`.
+- **Windows:** `msi/JC Grid Manager_<version>_<arch>_<lang>.msi`.
 
 Build for a single platform by running the command on that OS (there is no cross-compilation here).
-On macOS, set `APPLE_SIGNING_IDENTITY` (see above) to sign the build with your dev certificate.
+The Windows `.msi` uses the [WiX Toolset](https://wixtoolset.org/), which the Tauri CLI downloads
+automatically on first build. On macOS, set `APPLE_SIGNING_IDENTITY` (see above) to sign the build
+with your dev certificate.
 
 > v1 ships **unsigned** — no paid Apple Developer ID / notarization and no Windows Authenticode. Both
 > OSes show a one-time "unknown developer" warning on first launch; there is no auto-updater.
