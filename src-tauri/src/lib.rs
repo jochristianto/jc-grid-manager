@@ -1,6 +1,7 @@
+mod core;
 mod platform;
 
-use platform::Half;
+use crate::core::actions::Half;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,

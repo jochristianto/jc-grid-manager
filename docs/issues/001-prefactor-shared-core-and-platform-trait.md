@@ -8,7 +8,7 @@
 | **Blocks** | 003, 004, 005, and every action slice (007–019); the Windows shim (025) |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §5.3, §6, §10 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -96,21 +96,53 @@ Bookkeeping (required):
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- YYYY-MM-DD HH:MM TZ -->_
-- **Finished:** _<!-- YYYY-MM-DD HH:MM TZ -->_
-- **Duration:** _<!-- e.g. 2h15m -->_
+- **Started:** 2026-07-08 17:05 WIB
+- **Finished:** 2026-07-08 17:11 WIB
+- **Duration:** ~6m hands-on (excludes planning/reading)
 
 ## Implementation summary (fill this in)
 
-_<!-- What you built, key decisions, deviations from the plan, follow-ups discovered. -->_
+Redrew the §5.3 boundary as a no-behavior-change refactor.
+
+**What changed**
+- New `core/` module: `geometry.rs` (`Rect` + `fraction_to_rect`, with 4 unit tests incl. a
+  negative-origin display) and `actions.rs` (`Half` + `fraction()`, moved out of the shim).
+- `platform/mod.rs` now defines the `Platform` trait (6 I/O methods) and a platform-agnostic
+  `snap()`: `focused_window → work_area → fraction_to_rect → set_frame`. macOS implements the
+  trait (`MacPlatform`); a `StubPlatform` keeps the non-macOS build compiling.
+- The hard-won macOS bits are preserved verbatim: the size→position→size `set_frame` recipe,
+  the primary-screen-height coordinate flip, and the `NSWorkspace.frontmostApplication` focus
+  lookup. The Accessibility trust check moved into `focused_window()` (same error, same timing).
+- `lib.rs`: added `mod core;` and imports `Half` from `core::actions`; the four-half handler is
+  otherwise unchanged — still targets the **main** display (per-window selection is 003).
+
+**Key decision / deviation**
+- `frame` / `displays` / `identity` are declared on the trait (so the Windows shim in 025 can
+  implement the whole contract at once) but left as cheap placeholders (`Rect::ZERO` /
+  `Vec::new()` / `WindowIdentity::default()`). Their real bodies belong to the slices that first
+  call them (005 / 003 / 022). This avoids committing unexercised `unsafe` AX code and keeps the
+  diff a true behavioral no-op. A narrow `#[allow(dead_code)]` on the trait (plus `Rect::ZERO`
+  and `WindowIdentity`) documents the forward declaration and comes off as those issues wire them.
+
+**Verification**
+- `cargo test` → 5 pass. `cargo clippy` → no new warnings vs. the pre-existing baseline (the
+  `Shortcut`-clone warning is untouched original `lib.rs`, which 004 rewrites). `cargo build` OK.
+- The manual half-snap smoke test (build, grant Accessibility, press ⌃⌥ arrows) is a GUI step and
+  was **not** run here — it needs a real machine + the permission grant. Flagged for the user.
+
+**Follow-ups:** none blocking. 004 replaces the four hardcoded shortcuts (clearing the clone
+warning); 003 / 005 / 022 replace the placeholder trait methods with real implementations.
 
 ## Suggested commit message
 
 ```
 refactor(core): extract shared geometry core and Platform trait
 
-Move Half, fraction math, and work-area math out of the macOS shim into a
-platform-agnostic `core` module, and hide raw AX/NSScreen calls behind a
-`Platform` trait. Behavior of the four half-snaps is unchanged. Add a pure
-geometry unit-test harness.
+Move Half, the fraction math, and the work-area math out of the macOS shim
+into a platform-agnostic `core` module, and hide raw AX/NSScreen calls behind
+a `Platform` trait. `snap()` is now platform-agnostic; the four half-snaps
+behave exactly as before (main display, size→position→size recipe, primary-
+screen-height flip). `frame`/`displays`/`identity` are declared on the trait
+and stubbed for now — the slices that use them (003/005/022) fill in the real
+bodies. Add a pure geometry unit-test harness (cargo test: 5 passing).
 ```
