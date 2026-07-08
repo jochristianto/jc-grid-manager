@@ -8,7 +8,7 @@
 | **Blocks** | 022 (ignore list persistence), 028/029 (frontend settings + shortcut editor) |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §2, §4 ("Every shortcut is rebindable"), §5.4, §5.6, §6, §7 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -79,22 +79,88 @@ Bookkeeping (required): record START now; add FINISH + DURATION; write the Imple
 commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 20:09 WIB
+- **Finished:** 2026-07-08 20:21 WIB
+- **Duration:** ~12m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Built the local per-machine config backend + live rebinding, plus the IPC contract the
+frontend (028/029) will build against. Backend only — no UI.
+
+**What changed**
+- **New `config.rs`** (crate root, per §6): the `Config` serde struct (`version`, `bindings:
+  action-id → Bind` overrides, `tunables`, `ignore_apps`, `autostart`), stored as pretty JSON in
+  the Tauri app-config dir. Load tolerates a missing/partial/unknown-key file → defaults, never
+  crashes. Pure, unit-tested helpers `Config::effective_bind` (override-or-default) and
+  `conflicting_action` (duplicate detection, ignores self). Live state lives in Tauri-managed
+  `Mutex<ConfigState>` (config + cached effective `Shortcut→Action` registry).
+- **`shortcuts.rs`**: `Bind` gained a stable, hand-editable serde form via a `BindRepr` shadow —
+  `{ "base_modifier": true, "shift": false, "super": false, "code": "ArrowLeft" }` (code uses
+  `keyboard-types` W3C names through `Display`/`FromStr`, so it survives plugin upgrades). The
+  now-obsolete `default_registry` moved into the test module (runtime uses `Config::registry`).
+- **`core/geometry.rs`**: the three tunable constants became a `Tunables` struct (`DEFAULT` = the
+  old values, serde-friendly). `target_for` gained a live-tunables sibling `target_for_with`; the
+  default-args convenience moved into the test module so no production dead code. Almost Maximize /
+  Smaller / Larger now read `tunables.*`, so `set_tunable` actually takes effect (no behavior
+  change at defaults — all prior geometry tests pass unchanged).
+- **`platform/mod.rs`**: `perform` takes `Tunables` and threads them into `target_for_with`.
+- **`lib.rs`**: startup loads config and registers the **effective** binds (overrides over §4
+  defaults); the shortcut handler resolves fired chords against the live cached registry (so
+  rebinds take effect without restart); `dispatch` snapshots the live tunables; the seven commands
+  are registered.
+
+**IPC contract shipped** (names exactly as specified):
+- `get_config() -> Config`
+- `get_bindings() -> Vec<{ action: string, label: string, bind: Bind | null, is_default: bool }>`
+- `set_binding(action: string, bind: Bind) -> Result<(), { code, message }>` — validates
+  (duplicate + OS-refusal register/rollback probe), persists, re-registers live
+- `reset_binding(action: string) -> Result<(), { code, message }>`
+- `reset_all_bindings() -> Result<(), { code, message }>`
+- `set_tunable(key: string, value: f64) -> Result<(), { code, message }>` — keys
+  `almost_maximize_factor` / `min_size` (0,1], `resize_step` (0,0.5]
+- event `bindings-changed` — emitted after any successful change. Error codes: `unknown-action`,
+  `unknown-tunable`, `invalid-value`, `duplicate`, `os-refused`, `io`.
+
+**Key decisions / deviations**
+- Tunables are wired **live** into geometry (not just persisted) — the geometry.rs hooks pointed
+  at 020 and a persisted-but-inert `set_tunable` would be a half-feature. Zero behavior change at
+  defaults; the wrapper/convenience functions live in test modules to avoid dead production code.
+- `ignore_apps` and `autostart` are persisted schema fields only — consumed by 022/023, not wired
+  here (stayed in scope).
+- Custom commands need no capability entry in Tauri v2 (ACL gates only plugin/core commands); the
+  frontend issues will add any `event:listen` capability for `bindings-changed`.
+
+**Verification**
+- `cargo test` → 58 pass (5 new config tests: override resolution, duplicate-vs-self, registry
+  reflects overrides, config JSON round-trip + forward-compat; 3 new geometry tunables tests;
+  3 new Bind serde tests). `cargo clippy` → clean, no new warnings. `cargo build` OK.
+- **Not run here:** the manual GUI smoke (rebind live via `invoke`, confirm it survives restart,
+  reject a duplicate) — it needs the running app + Accessibility grant. Flagged for the user,
+  same as 001.
+
+**Follow-ups:** 022 reads `ignore_apps`; 023 wires `autostart`; 028/029 build the UI on this
+contract.
 
 ## Suggested commit message
 
 ```
-feat(core): persist local config and support validated live rebinding
+feat(core): persist local config with validated live rebinding
 
-Layer user shortcut overrides + tunables over defaults, persist to the app
-config dir, validate new binds (duplicate + OS-refusal), and re-register live.
-Expose get/set/reset binding invoke commands and a bindings-changed event.
+Add config.rs: a per-machine JSON config in the app-config dir holding shortcut
+overrides, sizing tunables, the ignore list, and the autostart flag. Layer user
+overrides over the §4 defaults, register the effective binds at startup, and
+resolve fired chords against a live registry so rebinds take effect immediately.
+
+set_binding validates new binds (duplicate + OS-refusal register/rollback probe),
+persists, and re-registers the affected shortcut live; reset_binding /
+reset_all_bindings restore defaults; set_tunable adjusts the Almost Maximize
+factor / resize step / min size (now threaded live into the geometry). All
+changes emit a bindings-changed event.
+
+Give Bind a stable, hand-editable serde form and make the sizing constants a
+Tunables struct. Backend + IPC contract only (frontend is 028/029). New tests:
+override resolution, duplicate detection, config/Bind round-trip (cargo test: 58).
 ```

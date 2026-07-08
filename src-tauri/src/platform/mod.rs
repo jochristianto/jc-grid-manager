@@ -5,7 +5,7 @@
 //! implements the trait via the Accessibility API; Windows arrives in issue 025.
 
 use crate::core::actions::Action;
-use crate::core::geometry::Rect;
+use crate::core::geometry::{Rect, Tunables};
 use crate::core::state::SnapState;
 
 #[cfg(target_os = "macos")]
@@ -59,11 +59,11 @@ fn platform() -> stub::StubPlatform {
 }
 
 /// Perform `action` on the focused window through the §7 state machine: geometry comes from
-/// [`crate::core::geometry::target_for`], the state machine decides the cycle step and restore
-/// baseline, and the resulting frame is re-read after the move so terminals / min-size windows
-/// still cycle correctly. `Ok(false)` means the action's geometry isn't implemented yet — a
-/// graceful "not implemented" the caller logs.
-pub fn perform(action: Action, state: &mut SnapState) -> Result<bool, String> {
+/// [`crate::core::geometry::target_for_with`] (with the live user `tunables`), the state machine
+/// decides the cycle step and restore baseline, and the resulting frame is re-read after the move
+/// so terminals / min-size windows still cycle correctly. `Ok(false)` means the action produced
+/// no move — a graceful no-op the caller logs.
+pub fn perform(action: Action, state: &mut SnapState, tunables: Tunables) -> Result<bool, String> {
     let p = platform();
     let win = p.focused_window()?;
     let current = p.frame(&win);
@@ -71,7 +71,7 @@ pub fn perform(action: Action, state: &mut SnapState) -> Result<bool, String> {
     let displays = p.displays();
 
     let target = state.next_target(action, current, work, action.cycle_len(), |step| {
-        crate::core::geometry::target_for(action, step, current, work, &displays)
+        crate::core::geometry::target_for_with(action, step, current, work, &displays, tunables)
     });
     let Some(target) = target else {
         return Ok(false);

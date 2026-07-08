@@ -1,14 +1,17 @@
+mod config;
 mod core;
 mod platform;
 mod shortcuts;
 
 use std::sync::{LazyLock, Mutex};
 
+use crate::config::ConfigState;
 use crate::core::actions::Action;
 use crate::core::state::SnapState;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
+    Manager,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -23,14 +26,18 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-/// Route a fired action. The four directional halves run the cycling snap (§7); every other
-/// action logs a placeholder until its slice lands (geometry 007–019, soft beep 021).
+/// Route a fired action through the §7 state machine. Restore returns to the pre-snap baseline;
+/// every other action runs through the geometry table with the live user tunables.
 fn dispatch(app: &tauri::AppHandle, action: Action) {
+    // Snapshot the current tunables (they may have been changed live via `set_tunable`).
+    let tunables = {
+        let state = app.state::<Mutex<ConfigState>>();
+        let guard = state.lock().unwrap();
+        guard.config.tunables
+    };
     // AppKit / Accessibility calls must run on the main thread.
     let _ = app.run_on_main_thread(move || {
         let mut state = SNAP_STATE.lock().unwrap();
-        // Restore returns the focused window to its pre-snap baseline (§7); every other action
-        // runs through the geometry table + state machine.
         if action == Action::Restore {
             match platform::restore(&mut state) {
                 Ok(true) => {}
@@ -39,7 +46,7 @@ fn dispatch(app: &tauri::AppHandle, action: Action) {
             }
             return;
         }
-        match platform::perform(action, &mut state) {
+        match platform::perform(action, &mut state, tunables) {
             Ok(true) => {}
             Ok(false) => println!("[jc-grid-manager] {} — nothing to do", action.label()),
             Err(e) => eprintln!("[jc-grid-manager] {} — {e}", action.label()),
@@ -49,32 +56,45 @@ fn dispatch(app: &tauri::AppHandle, action: Action) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // The default key scheme (idea.md §4), resolved to concrete shortcuts. One copy drives
-    // the fired-shortcut → action lookup in the handler; the other registers them at startup.
-    let registry = shortcuts::default_registry();
-    let handler_registry = registry.clone();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
-                .with_handler(move |app, shortcut, event| {
+                .with_handler(|app, shortcut, event| {
                     if !matches!(event.state(), ShortcutState::Pressed) {
                         return;
                     }
-                    if let Some(&(_, action)) =
-                        handler_registry.iter().find(|(s, _)| s == shortcut)
-                    {
+                    // Resolve against the live effective registry (rebinding may have changed it).
+                    let action = {
+                        let state = app.state::<Mutex<ConfigState>>();
+                        let guard = state.lock().unwrap();
+                        guard
+                            .registry
+                            .iter()
+                            .find(|(s, _)| s == shortcut)
+                            .map(|(_, action)| *action)
+                    };
+                    if let Some(action) = action {
                         dispatch(app, action);
                     }
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![greet])
-        .setup(move |app| {
-            // Register every default-bound shortcut. A bind the OS refuses is logged, not
-            // fatal (full conflict validation is issue 020).
-            for (shortcut, action) in &registry {
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            config::get_config,
+            config::get_bindings,
+            config::set_binding,
+            config::reset_binding,
+            config::reset_all_bindings,
+            config::set_tunable
+        ])
+        .setup(|app| {
+            // Load the persisted per-machine config (or defaults on first run) and register the
+            // effective shortcuts — user overrides layered over the §4 defaults (issue 020). A
+            // bind the OS refuses is logged, not fatal.
+            let state = ConfigState::new(config::load(app.handle()));
+            for (shortcut, action) in &state.registry {
                 if let Err(e) = app.global_shortcut().register(*shortcut) {
                     eprintln!(
                         "[jc-grid-manager] could not register {} ({shortcut:?}): {e}",
@@ -82,6 +102,7 @@ pub fn run() {
                     );
                 }
             }
+            app.manage(Mutex::new(state));
 
             // Menu-bar / system-tray icon with a minimal menu (just Quit for now).
             let quit = MenuItem::with_id(app, "quit", "Quit JC Grid Manager", true, None::<&str>)?;

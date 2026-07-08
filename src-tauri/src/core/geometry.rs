@@ -5,6 +5,8 @@
 //! are expressed as fractions `(x, y, w, h)` of a display's work area, each in `0.0..=1.0`,
 //! so screen size, DPI, and origin never enter the math (idea.md §5.3).
 
+use serde::{Deserialize, Serialize};
+
 use crate::core::actions::Action;
 
 /// A rectangle in a top-left-origin, fraction-friendly absolute space.
@@ -89,15 +91,34 @@ pub fn display_for(window: Rect, displays: &[Rect]) -> Rect {
     displays[best]
 }
 
-/// Default factor for Almost Maximize (idea.md §4): fill this fraction of the work area,
-/// centered. Config hook — issue 020 makes it a user setting (`almost_maximize_factor`).
-pub const ALMOST_MAXIMIZE_FACTOR: f64 = 0.9;
+/// User-tunable sizing factors (idea.md §4). Formerly module constants; issue 020 turned them
+/// into persisted settings the dispatcher threads into [`target_for_with`]. All are fractions of
+/// the work area, so they stay screen-size / DPI independent like the rest of the geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tunables {
+    /// Almost Maximize fills this fraction of the work area, centered.
+    pub almost_maximize_factor: f64,
+    /// Smaller/Larger add or remove this fraction of the work area per press.
+    pub resize_step: f64,
+    /// Smaller floor: the window won't shrink below this fraction of the work area.
+    pub min_size: f64,
+}
 
-/// Smaller/Larger step: fraction of the work area added/removed per press. Config hook (020).
-pub const RESIZE_STEP: f64 = 0.05;
+impl Tunables {
+    /// The built-in defaults (the pre-020 constant values). Also the base for partial config.
+    pub const DEFAULT: Tunables = Tunables {
+        almost_maximize_factor: 0.9,
+        resize_step: 0.05,
+        min_size: 0.2,
+    };
+}
 
-/// Smaller floor: the window won't shrink below this fraction of the work area. Config hook (020).
-pub const MIN_SIZE_FRACTION: f64 = 0.2;
+impl Default for Tunables {
+    fn default() -> Self {
+        Tunables::DEFAULT
+    }
+}
 
 /// Resize `win` by `dw`/`dh` (added to width/height) keeping its center fixed, then clamp into
 /// `work`: size floored at `min_w`/`min_h` and capped at the work area, origin kept on-screen.
@@ -145,14 +166,16 @@ fn display_move(win: Rect, src: Rect, displays: &[Rect], forward: bool) -> Optio
 
 /// The geometry table: the absolute target rect for `action` at cycle `step`, for a window
 /// currently at `current` on the display with work area `work` (`displays` carries all display
-/// work areas, for cross-display moves). `None` means the action produced no move (e.g. a
+/// work areas, for cross-display moves). `tunables` supplies the user-configurable sizing factors
+/// (Almost Maximize / Smaller / Larger). `None` means the action produced no move (e.g. a
 /// display move with a single display). Every action has an arm; Restore is handled upstream.
-pub fn target_for(
+pub fn target_for_with(
     action: Action,
     step: usize,
     current: Rect,
     work: Rect,
     displays: &[Rect],
+    tunables: Tunables,
 ) -> Option<Rect> {
     use Action::*;
     match action {
@@ -177,9 +200,9 @@ pub fn target_for(
         BottomRight => Some(fraction_to_rect(work, (0.5, 0.5, 0.5, 0.5))),
         // Maximize — fill the work area, not native fullscreen (issue 011).
         Maximize => Some(fraction_to_rect(work, (0.0, 0.0, 1.0, 1.0))),
-        // Almost Maximize — centered, filling ALMOST_MAXIMIZE_FACTOR of the work area (012).
+        // Almost Maximize — centered, filling `almost_maximize_factor` of the work area (012).
         AlmostMaximize => {
-            let f = ALMOST_MAXIMIZE_FACTOR;
+            let f = tunables.almost_maximize_factor;
             Some(fraction_to_rect(work, ((1.0 - f) / 2.0, (1.0 - f) / 2.0, f, f)))
         }
         // Maximize Height — full work-area height, current width + x kept (issue 013). Setting
@@ -192,12 +215,12 @@ pub fn target_for(
             let y = work.y + ((work.h - current.h) / 2.0).max(0.0);
             Some(Rect::new(x, y, current.w, current.h))
         }
-        // Smaller / Larger — resize by RESIZE_STEP of the work area around the window's center,
-        // capped at the work area and floored at MIN_SIZE_FRACTION of it (issue 015).
+        // Smaller / Larger — resize by `resize_step` of the work area around the window's center,
+        // capped at the work area and floored at `min_size` of it (issue 015).
         Larger | Smaller => {
             let sign = if matches!(action, Larger) { 1.0 } else { -1.0 };
-            let (dw, dh) = (sign * RESIZE_STEP * work.w, sign * RESIZE_STEP * work.h);
-            let (min_w, min_h) = (MIN_SIZE_FRACTION * work.w, MIN_SIZE_FRACTION * work.h);
+            let (dw, dh) = (sign * tunables.resize_step * work.w, sign * tunables.resize_step * work.h);
+            let (min_w, min_h) = (tunables.min_size * work.w, tunables.min_size * work.h);
             Some(resize_around_center(current, work, dw, dh, min_w, min_h))
         }
         // Move to Edge — slide flush to an edge, no resize; other axis unchanged (issue 016).
@@ -230,6 +253,18 @@ pub fn target_for(
 mod tests {
     use super::*;
     use crate::core::actions::Action;
+
+    /// Default-tunables geometry — the entry point the assertions below use. Production threads
+    /// live [`Tunables`] via [`target_for_with`]; these tests pin the default behavior.
+    fn target_for(
+        action: Action,
+        step: usize,
+        current: Rect,
+        work: Rect,
+        displays: &[Rect],
+    ) -> Option<Rect> {
+        target_for_with(action, step, current, work, displays, Tunables::DEFAULT)
+    }
 
     #[test]
     fn left_half_at_origin() {
@@ -492,6 +527,42 @@ mod tests {
         assert!((got.x - 1000.0).abs() < 1e-6, "x={}", got.x);
         assert!((got.w - 300.0).abs() < 1e-6, "w={}", got.w);
         assert!((got.h - 800.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn tunables_default_matches_builtin_values() {
+        assert_eq!(Tunables::default(), Tunables::DEFAULT);
+        assert_eq!(Tunables::DEFAULT.almost_maximize_factor, 0.9);
+        assert_eq!(Tunables::DEFAULT.resize_step, 0.05);
+        assert_eq!(Tunables::DEFAULT.min_size, 0.2);
+    }
+
+    #[test]
+    fn target_for_with_honors_almost_maximize_factor() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let tunables = Tunables { almost_maximize_factor: 0.8, ..Tunables::DEFAULT };
+        let got = target_for_with(Action::AlmostMaximize, 0, Rect::ZERO, work, &[], tunables).unwrap();
+        // 0.8 → 10% margins: x=100, y=80, w=800, h=640.
+        assert!((got.x - 100.0).abs() < 1e-6, "x={}", got.x);
+        assert!((got.y - 80.0).abs() < 1e-6, "y={}", got.y);
+        assert!((got.w - 800.0).abs() < 1e-6, "w={}", got.w);
+        assert!((got.h - 640.0).abs() < 1e-6, "h={}", got.h);
+    }
+
+    #[test]
+    fn target_for_with_honors_resize_step_and_min_size() {
+        let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
+        let win = Rect::new(300.0, 250.0, 400.0, 300.0); // center (500, 400)
+        // A bigger step grows more per press.
+        let bigger = Tunables { resize_step: 0.10, ..Tunables::DEFAULT };
+        let got = target_for_with(Action::Larger, 0, win, work, &[], bigger).unwrap();
+        assert!((got.w - 500.0).abs() < 1e-6, "w={}", got.w); // +10% of 1000
+        assert!((got.h - 380.0).abs() < 1e-6, "h={}", got.h); // +10% of 800
+        // A higher floor stops Smaller sooner.
+        let floored = Tunables { min_size: 0.4, ..Tunables::DEFAULT };
+        let small = target_for_with(Action::Smaller, 0, Rect::new(400.0, 300.0, 410.0, 330.0), work, &[], floored).unwrap();
+        assert!((small.w - 400.0).abs() < 1e-6, "w={}", small.w); // floored at 40% of 1000
+        assert!((small.h - 320.0).abs() < 1e-6, "h={}", small.h); // floored at 40% of 800
     }
 
     #[test]

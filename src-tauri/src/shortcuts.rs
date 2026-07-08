@@ -6,17 +6,70 @@
 //! [`Shortcut`]s paired with their [`Action`]. Config persistence, rebinding, and conflict
 //! validation arrive in issue 020; [`Bind`] is kept small and serialization-friendly for it.
 
+use serde::{Deserialize, Serialize};
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
 use crate::core::actions::Action;
 
 /// A platform-neutral key binding. `base_modifier` is the app's base chord (Control+Option /
 /// Ctrl+Alt); `extra` adds Shift and/or Super (⌘ on macOS, ⊞ Win on Windows); `code` is the key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Serialized (config file + IPC, issue 020) as a stable, hand-editable shape rather than the
+/// plugin's internal enums: `{ "base_modifier": true, "shift": false, "super": false,
+/// "code": "ArrowLeft" }`. `code` uses the W3C UI Events key-code names (`Code`'s `Display` /
+/// `FromStr`), so the JSON survives plugin upgrades and a person can edit it (idea.md §9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "BindRepr", try_from = "BindRepr")]
 pub struct Bind {
     pub base_modifier: bool,
     pub extra: Modifiers,
     pub code: Code,
+}
+
+/// The serialized shape of a [`Bind`] (see its docs). `extra` is split into explicit `shift` /
+/// `super` flags so the JSON is self-describing and forward-compatible.
+#[derive(Serialize, Deserialize)]
+struct BindRepr {
+    base_modifier: bool,
+    #[serde(default)]
+    shift: bool,
+    #[serde(default, rename = "super")]
+    super_key: bool,
+    code: String,
+}
+
+impl From<Bind> for BindRepr {
+    fn from(bind: Bind) -> Self {
+        BindRepr {
+            base_modifier: bind.base_modifier,
+            shift: bind.extra.contains(Modifiers::SHIFT),
+            super_key: bind.extra.contains(Modifiers::SUPER),
+            code: bind.code.to_string(),
+        }
+    }
+}
+
+impl TryFrom<BindRepr> for Bind {
+    type Error = String;
+
+    fn try_from(repr: BindRepr) -> Result<Self, Self::Error> {
+        let code = repr
+            .code
+            .parse::<Code>()
+            .map_err(|_| format!("unrecognized key code {:?}", repr.code))?;
+        let mut extra = Modifiers::empty();
+        if repr.shift {
+            extra |= Modifiers::SHIFT;
+        }
+        if repr.super_key {
+            extra |= Modifiers::SUPER;
+        }
+        Ok(Bind {
+            base_modifier: repr.base_modifier,
+            extra,
+            code,
+        })
+    }
 }
 
 impl Bind {
@@ -87,18 +140,19 @@ pub fn default_bind(action: Action) -> Option<Bind> {
     }
 }
 
-/// The default scheme resolved to concrete shortcuts, each paired with its action. Actions
-/// with no default binding are omitted.
-pub fn default_registry() -> Vec<(Shortcut, Action)> {
-    Action::ALL
-        .into_iter()
-        .filter_map(|action| default_bind(action).map(|bind| (bind.to_shortcut(), action)))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The default scheme resolved to concrete shortcuts, each paired with its action (menu-only
+    /// actions omitted). At runtime the effective registry ([`crate::config::Config::registry`])
+    /// drives registration; this stays as the pinned, collision-free default scheme.
+    fn default_registry() -> Vec<(Shortcut, Action)> {
+        Action::ALL
+            .into_iter()
+            .filter_map(|action| default_bind(action).map(|bind| (bind.to_shortcut(), action)))
+            .collect()
+    }
 
     fn shortcut_of(action: Action) -> Shortcut {
         default_bind(action)
@@ -154,6 +208,33 @@ mod tests {
         assert_eq!(default_bind(Action::AlmostMaximize), None);
         assert_eq!(default_bind(Action::FirstFourth), None);
         assert_eq!(default_bind(Action::SixthTopLeft), None);
+    }
+
+    #[test]
+    fn bind_serializes_to_stable_hand_editable_json() {
+        let bind = default_bind(Action::NextDisplay).unwrap(); // base + Super + ArrowRight
+        let json = serde_json::to_value(bind).unwrap();
+        assert_eq!(json["base_modifier"], true);
+        assert_eq!(json["super"], true);
+        assert_eq!(json["shift"], false);
+        assert_eq!(json["code"], "ArrowRight");
+    }
+
+    #[test]
+    fn bind_round_trips_through_json() {
+        for action in Action::ALL {
+            if let Some(bind) = default_bind(action) {
+                let json = serde_json::to_string(&bind).unwrap();
+                let back: Bind = serde_json::from_str(&json).unwrap();
+                assert_eq!(bind, back, "round-trip mismatch for {action:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn bind_deserialize_rejects_unknown_code() {
+        let err = serde_json::from_str::<Bind>(r#"{"base_modifier":true,"code":"NopeKey"}"#);
+        assert!(err.is_err(), "unknown code should fail to parse");
     }
 
     #[test]
