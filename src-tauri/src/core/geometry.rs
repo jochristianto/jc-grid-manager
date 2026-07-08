@@ -172,6 +172,11 @@ pub fn target_for(
         MoveRight => Some(Rect::new(work.x + work.w - current.w, current.y, current.w, current.h)),
         MoveUp => Some(Rect::new(current.x, work.y, current.w, current.h)),
         MoveDown => Some(Rect::new(current.x, work.y + work.h - current.h, current.w, current.h)),
+        // Fourths — full-height quarter-width columns (issue 017).
+        FirstFourth => Some(fraction_to_rect(work, (0.0, 0.0, 0.25, 1.0))),
+        SecondFourth => Some(fraction_to_rect(work, (0.25, 0.0, 0.25, 1.0))),
+        ThirdFourth => Some(fraction_to_rect(work, (0.5, 0.0, 0.25, 1.0))),
+        LastFourth => Some(fraction_to_rect(work, (0.75, 0.0, 0.25, 1.0))),
         _ => None,
     }
 }
@@ -408,5 +413,15 @@ mod tests {
         assert_eq!(f(Action::MoveRight), Rect::new(750.0, 200.0, 250.0, 150.0));
         assert_eq!(f(Action::MoveUp), Rect::new(300.0, 0.0, 250.0, 150.0));
         assert_eq!(f(Action::MoveDown), Rect::new(300.0, 650.0, 250.0, 150.0));
+    }
+
+    #[test]
+    fn target_for_fourths_tile_width() {
+        let work = Rect::new(0.0, 0.0, 800.0, 600.0);
+        let f = |a| target_for(a, 0, Rect::ZERO, work, &[]).unwrap();
+        assert_eq!(f(Action::FirstFourth), Rect::new(0.0, 0.0, 200.0, 600.0));
+        assert_eq!(f(Action::SecondFourth), Rect::new(200.0, 0.0, 200.0, 600.0));
+        assert_eq!(f(Action::ThirdFourth), Rect::new(400.0, 0.0, 200.0, 600.0));
+        assert_eq!(f(Action::LastFourth), Rect::new(600.0, 0.0, 200.0, 600.0));
     }
 }

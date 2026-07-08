@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | none (menu-only sub-menu; user may bind) |
 | **Source** | `docs/idea.md` §4 (Sub-menus → Fourths) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -58,13 +58,15 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:49 WIB
+- **Finished:** 2026-07-08 18:51 WIB
+- **Duration:** ~2m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added four `target_for` arms — First/Second/Third/Last Fourth — full-height quarter-width columns
+at x ∈ {0, .25, .5, .75}, w = .25. Menu-only (no default binds). Unit test verifies the four
+columns tile the width exactly. `cargo test` → 44 pass.
 
 ## Suggested commit message
 
