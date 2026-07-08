@@ -177,6 +177,37 @@ fn beep() {
 #[cfg(not(target_os = "macos"))]
 fn beep() {}
 
+// ----- Accessibility permission (macOS onboarding, issue 030) --------------------------------
+
+/// Whether the process may control other apps' windows. macOS gates this behind the Accessibility
+/// permission; Windows needs no such grant, so it is always available there.
+pub fn accessibility_trusted() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::is_trusted()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        true
+    }
+}
+
+/// Trigger the macOS Accessibility permission prompt (idea.md §8). No-op off macOS.
+pub fn prompt_accessibility() {
+    #[cfg(target_os = "macos")]
+    {
+        macos::prompt();
+    }
+}
+
+/// Open System Settings → Privacy & Security → Accessibility (idea.md §8). No-op off macOS.
+pub fn open_accessibility_settings() {
+    #[cfg(target_os = "macos")]
+    {
+        macos::open_accessibility_settings();
+    }
+}
+
 /// Non-macOS placeholder so the crate builds off macOS. Real Windows I/O lands in 025.
 #[cfg(not(target_os = "macos"))]
 mod stub {

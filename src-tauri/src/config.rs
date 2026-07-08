@@ -19,6 +19,9 @@
 //! - `set_autostart(enabled: bool) -> Result<(), BindingError>`
 //! - `get_frontmost_app() -> Result<IgnoreStatus, BindingError>`  — frontmost app + ignore state (022)
 //! - `toggle_ignore_current_app() -> Result<IgnoreStatus, BindingError>`  — toggle the frontmost app
+//! - `get_accessibility_state() -> "trusted" | "never_asked" | "denied"`  — macOS onboarding (030)
+//! - `prompt_accessibility() -> Result<(), BindingError>`  — pop the system prompt (030)
+//! - `open_accessibility_settings() -> Result<(), BindingError>`  — deep-link the settings pane (030)
 //!
 //! Event: `bindings-changed` — emitted after any successful change so an open settings window
 //! can refetch. `BindingError` is `{ code, message }`; codes: `unknown-action`, `unknown-tunable`,
@@ -60,6 +63,9 @@ pub struct Config {
     pub ignore_apps: Vec<String>,
     /// Launch at login. Consumed by issue 023 (not wired here).
     pub autostart: bool,
+    /// Whether we've shown the macOS Accessibility prompt at least once — distinguishes
+    /// "never asked" from "denied/stale" in the onboarding (issue 030).
+    pub accessibility_prompted: bool,
 }
 
 impl Default for Config {
@@ -70,6 +76,7 @@ impl Default for Config {
             tunables: Tunables::DEFAULT,
             ignore_apps: Vec::new(),
             autostart: false,
+            accessibility_prompted: false,
         }
     }
 }
@@ -482,6 +489,51 @@ fn toggle_membership(list: &mut Vec<String>, key: &str) -> bool {
         list.push(key.to_string());
         true
     }
+}
+
+// ----- Accessibility onboarding (issue 030) --------------------------------------------------
+
+/// The macOS Accessibility permission state for the onboarding flow (idea.md §8):
+/// - `"trusted"` — granted; the app can move windows.
+/// - `"never_asked"` — untrusted and we've never prompted (first run) → prompt.
+/// - `"denied"` — untrusted after prompting (denied, or a stale grant after reinstall/update) →
+///   settings deep-link + `tccutil reset` guidance.
+///
+/// On non-macOS there is no such permission, so this is always `"trusted"`.
+#[tauri::command]
+pub fn get_accessibility_state(state: State<'_, Mutex<ConfigState>>) -> String {
+    if crate::platform::accessibility_trusted() {
+        return "trusted".to_string();
+    }
+    let prompted = state.lock().unwrap().config.accessibility_prompted;
+    if prompted {
+        "denied".to_string()
+    } else {
+        "never_asked".to_string()
+    }
+}
+
+/// Pop the system Accessibility prompt (idea.md §8) and record that we've asked, so a later
+/// still-untrusted check reads as `"denied"` rather than `"never_asked"`.
+#[tauri::command]
+pub fn prompt_accessibility(
+    app: AppHandle,
+    state: State<'_, Mutex<ConfigState>>,
+) -> Result<(), BindingError> {
+    crate::platform::prompt_accessibility();
+    let config = {
+        let mut guard = state.lock().unwrap();
+        guard.config.accessibility_prompted = true;
+        guard.config.clone()
+    };
+    save(&app, &config).map_err(|e| BindingError::new("io", e))
+}
+
+/// Open System Settings → Privacy & Security → Accessibility (idea.md §8).
+#[tauri::command]
+pub fn open_accessibility_settings() -> Result<(), BindingError> {
+    crate::platform::open_accessibility_settings();
+    Ok(())
 }
 
 #[cfg(test)]

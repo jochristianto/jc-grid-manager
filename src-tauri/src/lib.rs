@@ -118,7 +118,10 @@ pub fn run() {
             config::get_autostart,
             config::set_autostart,
             config::get_frontmost_app,
-            config::toggle_ignore_current_app
+            config::toggle_ignore_current_app,
+            config::get_accessibility_state,
+            config::prompt_accessibility,
+            config::open_accessibility_settings
         ])
         .setup(|app| {
             // Load the persisted per-machine config (or defaults on first run) and register the

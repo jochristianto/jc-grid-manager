@@ -141,19 +141,49 @@ unsafe fn nsstring_to_string(s: id) -> Option<String> {
     Some(std::ffi::CStr::from_ptr(bytes).to_string_lossy().into_owned())
 }
 
-/// Whether the process is trusted for the Accessibility API. If not, this pops the system
-/// prompt that points the user at System Settings → Privacy & Security.
-fn ensure_trusted() -> bool {
+/// Whether the process is currently trusted for the Accessibility API. Pure query, no prompt.
+pub fn is_trusted() -> bool {
+    unsafe { AXIsProcessTrusted() }
+}
+
+/// Show the system Accessibility prompt (idea.md §8) that points the user at System Settings →
+/// Privacy & Security. Safe to call when already trusted (the system just no-ops).
+pub fn prompt() {
     unsafe {
-        if AXIsProcessTrusted() {
-            return true;
-        }
         let key = CFString::wrap_under_get_rule(kAXTrustedCheckOptionPrompt);
         let value = CFBoolean::true_value();
         let options = CFDictionary::from_CFType_pairs(&[(key.as_CFType(), value.as_CFType())]);
         AXIsProcessTrustedWithOptions(options.as_concrete_TypeRef());
-        false
     }
+}
+
+/// Open System Settings → Privacy & Security → Accessibility via `NSWorkspace` (idea.md §8). The
+/// `x-apple.systempreferences:` scheme is why this goes through the shim rather than the opener
+/// plugin (whose default policy only allows http/https/mailto/tel).
+pub fn open_accessibility_settings() {
+    const PANE: &str = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+    unsafe {
+        let Ok(cstr) = std::ffi::CString::new(PANE) else {
+            return;
+        };
+        let url_string: id = msg_send![class!(NSString), stringWithUTF8String: cstr.as_ptr()];
+        let url: id = msg_send![class!(NSURL), URLWithString: url_string];
+        if url == nil {
+            return;
+        }
+        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+        let _: bool = msg_send![workspace, openURL: url];
+    }
+}
+
+/// Whether the process is trusted; if not, pop the system prompt once. Used when an action is
+/// triggered without going through the onboarding flow (issue 030).
+fn ensure_trusted() -> bool {
+    if is_trusted() {
+        return true;
+    }
+    prompt();
+    false
 }
 
 /// The focused window of the frontmost application.

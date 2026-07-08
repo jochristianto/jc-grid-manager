@@ -55,6 +55,9 @@ export interface BindingError {
 /** A settable sizing tunable. */
 export type TunableKey = keyof Tunables;
 
+/** macOS Accessibility permission state for onboarding (issue 030). */
+export type AccessibilityState = "trusted" | "never_asked" | "denied";
+
 /** Emitted by the backend after any successful config change. */
 export const EVENT_BINDINGS_CHANGED = "bindings-changed";
 
@@ -101,6 +104,21 @@ export function toggleIgnoreCurrentApp(): Promise<IgnoreStatus> {
 /** Subscribe to backend `bindings-changed`; resolves to the unlisten fn. */
 export function onBindingsChanged(handler: () => void): Promise<UnlistenFn> {
   return listen(EVENT_BINDINGS_CHANGED, () => handler());
+}
+
+/** macOS Accessibility permission state (issue 030). Always `"trusted"` off macOS. */
+export function getAccessibilityState(): Promise<AccessibilityState> {
+  return invoke("get_accessibility_state");
+}
+
+/** Pop the macOS Accessibility system prompt (records that we've asked). */
+export function promptAccessibility(): Promise<void> {
+  return invoke("prompt_accessibility");
+}
+
+/** Open System Settings → Privacy & Security → Accessibility. */
+export function openAccessibilitySettings(): Promise<void> {
+  return invoke("open_accessibility_settings");
 }
 
 /** Narrow an unknown `invoke` rejection to a human message. */

@@ -7,7 +7,7 @@
 | **Depends on** | 001/021 (a backend trust-state command), 028 (shell) |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §8 (the three states), §5.6, §11 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -71,22 +71,72 @@ Bookkeeping (required): record START now; add FINISH + DURATION; write the Imple
 backend wrappers you added); do NOT git commit; refine the Suggested commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 21:58 WIB
+- **Finished:** 2026-07-08 22:06 WIB
+- **Duration:** ~8m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Built the macOS Accessibility onboarding, plus the thin backend trust-state contract it needed.
+The app gates on the permission at launch and advances to Settings on its own once granted.
+
+**Backend added** (the wrappers the issue anticipated)
+- **`platform/macos.rs`** — split the old `ensure_trusted` into reusable `is_trusted()` (pure
+  `AXIsProcessTrusted`, no prompt) and `prompt()` (the `AXIsProcessTrustedWithOptions` system
+  prompt); `ensure_trusted` now composes them. Added `open_accessibility_settings()` — opens
+  `x-apple.systempreferences:…Privacy_Accessibility` via `NSWorkspace` (that URL scheme is why it's
+  a shim call, not the opener plugin).
+- **`platform/mod.rs`** — `accessibility_trusted()` (macOS query; **always true off macOS**, so no
+  onboarding on Windows), `prompt_accessibility()`, `open_accessibility_settings()` (no-ops off
+  macOS).
+- **`config.rs`** — new persisted `accessibility_prompted: bool`, and three commands:
+  `get_accessibility_state() -> "trusted"|"never_asked"|"denied"` (trusted if the AX check passes;
+  else `never_asked`/`denied` by the prompted flag), `prompt_accessibility()` (prompts + records the
+  flag), `open_accessibility_settings()`. Registered in `lib.rs`; documented in the IPC contract.
+
+**Frontend added**
+- **`tauriBridge.ts`** — `AccessibilityState` type + `getAccessibilityState`/`promptAccessibility`/
+  `openAccessibilitySettings`.
+- **`components/FirstRun.tsx`** — the onboarding card. `never_asked` → explain + **Grant
+  Accessibility Access** (`prompt_accessibility`). `denied` → explain + **Open Accessibility
+  Settings** (`open_accessibility_settings`) **and** the stale-grant block (remove/re-add guidance +
+  the exact `tccutil reset Accessibility com.jochristianto.jcgridmanager` with a Copy button).
+- **`App.tsx`** — gates the app: `loading → trusted → SettingsWindow`, otherwise `<FirstRun>`. It
+  **re-checks on window focus and slow-polls (2 s)** so granting permission in System Settings
+  advances to the app without a relaunch, then stops polling. **Skips the check entirely off macOS**
+  (`IS_MAC`) so the screen never appears on Windows. On a backend error it fails open to the app.
+- **`App.css`** — onboarding-card styles.
+
+**Key decisions / deviations**
+- **Three §8 states via one persisted flag**: TCC can't distinguish denied from a stale grant, so
+  both surface as `denied`, and that screen carries **both** the settings deep-link and the reset
+  guidance — covering all three acceptance rows.
+- Double macOS gate (backend returns trusted off-macOS **and** the frontend `IS_MAC` short-circuit)
+  so the onboarding truly never renders on Windows.
+
+**Verification**
+- Backend: `cargo test` → 68 pass, `cargo clippy --all-targets` clean, `cargo build` links the new
+  `NSWorkspace`/`NSURL` calls. Frontend: `pnpm exec tsc --noEmit` clean, `pnpm run build` OK.
+- Headless (browse): the app **mounts with no console errors**; in a plain browser it renders the
+  brief loading (null) state because `get_accessibility_state` (invoke) has no Tauri backend to
+  answer — expected; under `tauri dev` it resolves instantly.
+- **Not run here** (needs `tauri dev` on macOS): fresh state → prompt; deny → settings guidance;
+  `tccutil reset Accessibility com.jochristianto.jcgridmanager` to simulate the stale case → reset
+  guidance; grant → auto-advances to Settings. Flagged for the user.
 
 ## Suggested commit message
 
 ```
 feat(ui): add macOS Accessibility onboarding (three states)
 
-Handle never-asked / denied / stale-grant with tailored guidance (system
-prompt, settings deep-link, tccutil reset), auto-advancing once trusted.
-macOS-only.
+Gate the app on the macOS Accessibility permission (idea.md §8). Add the backend
+trust-state contract — get_accessibility_state / prompt_accessibility /
+open_accessibility_settings, with a persisted accessibility_prompted flag to tell
+"never asked" from "denied". FirstRun handles never-asked (system prompt), denied
+(settings deep-link), and the unsigned stale-grant case (tccutil reset guidance);
+it re-checks on focus + a slow poll so granting advances to the app without a
+relaunch. macOS-only — the screen never shows on Windows. cargo test 68; tsc/build
+clean.
 ```
