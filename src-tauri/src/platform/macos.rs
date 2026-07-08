@@ -36,6 +36,18 @@ use crate::core::geometry::{display_for, Rect};
 /// The macOS implementation of [`Platform`].
 pub struct MacPlatform;
 
+/// Play the standard macOS alert sound. Used by [`super::notify_no_op`] to signal that an
+/// action could do nothing (idea.md §4). `NSBeep` is a free AppKit function; AppKit is already
+/// linked for `NSScreen` / `NSWorkspace`.
+pub fn beep() {
+    unsafe { NSBeep() }
+}
+
+#[link(name = "AppKit", kind = "framework")]
+extern "C" {
+    fn NSBeep();
+}
+
 /// An owned `AXUIElement` window handle; releases the underlying CF object on drop.
 pub struct AxWindow(AXUIElementRef);
 

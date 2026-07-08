@@ -41,7 +41,22 @@ impl Rect {
     fn contains(self, px: f64, py: f64) -> bool {
         px >= self.x && px < self.x + self.w && py >= self.y && py < self.y + self.h
     }
+
+    /// Whether every edge of `self` and `other` matches within [`MATCH_TOLERANCE`]. `set_frame`
+    /// results aren't exact — rounding, and terminals / min-size windows clamp — so window
+    /// frames are compared with a few points of give (the snap state machine's "still where we
+    /// put it" test in §7, and the "did the window move at all?" no-op check in §4).
+    pub fn approx_eq(self, other: Rect) -> bool {
+        (self.x - other.x).abs() <= MATCH_TOLERANCE
+            && (self.y - other.y).abs() <= MATCH_TOLERANCE
+            && (self.w - other.w).abs() <= MATCH_TOLERANCE
+            && (self.h - other.h).abs() <= MATCH_TOLERANCE
+    }
 }
+
+/// Slack (points) for "these two frames are the same". `set_frame` isn't exact — rounding, and
+/// terminals / min-size windows clamp — so frames are matched with a few points of give.
+pub const MATCH_TOLERANCE: f64 = 5.0;
 
 /// Turn a `(x, y, w, h)` fraction of `work` (each component in `0.0..=1.0`) into an
 /// absolute [`Rect`] inside that work area. The work area's origin is carried through, so a

@@ -41,14 +41,20 @@ fn dispatch(app: &tauri::AppHandle, action: Action) {
         if action == Action::Restore {
             match platform::restore(&mut state) {
                 Ok(true) => {}
-                Ok(false) => println!("[jc-grid-manager] nothing to restore"),
+                Ok(false) => {
+                    println!("[jc-grid-manager] nothing to restore");
+                    platform::notify_no_op();
+                }
                 Err(e) => eprintln!("[jc-grid-manager] restore — {e}"),
             }
             return;
         }
         match platform::perform(action, &mut state, tunables) {
             Ok(true) => {}
-            Ok(false) => println!("[jc-grid-manager] {} — nothing to do", action.label()),
+            Ok(false) => {
+                println!("[jc-grid-manager] {} — nothing to do", action.label());
+                platform::notify_no_op();
+            }
             Err(e) => eprintln!("[jc-grid-manager] {} — {e}", action.label()),
         }
     });

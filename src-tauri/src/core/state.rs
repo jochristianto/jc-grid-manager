@@ -10,18 +10,6 @@
 use crate::core::actions::Action;
 use crate::core::geometry::Rect;
 
-/// Slack (points) for "the window is still where we put it". `set_frame` results aren't exact
-/// (rounding; terminals and min-size windows clamp), so compare frames with a few px of give.
-const MATCH_TOLERANCE: f64 = 5.0;
-
-/// Whether two rectangles match within [`MATCH_TOLERANCE`] on every edge.
-fn approx_eq(a: Rect, b: Rect) -> bool {
-    (a.x - b.x).abs() <= MATCH_TOLERANCE
-        && (a.y - b.y).abs() <= MATCH_TOLERANCE
-        && (a.w - b.w).abs() <= MATCH_TOLERANCE
-        && (a.h - b.h).abs() <= MATCH_TOLERANCE
-}
-
 /// One remembered snap run (§7). Single record for now; a small MRU list is a later upgrade.
 #[derive(Debug, Clone, Copy)]
 struct SnapRecord {
@@ -68,8 +56,8 @@ impl SnapState {
     ) -> Option<Rect> {
         let continues = self.record.is_some_and(|r| {
             r.action == action
-                && approx_eq(r.work_area, work_area)
-                && approx_eq(r.last_set, current_frame)
+                && r.work_area.approx_eq(work_area)
+                && r.last_set.approx_eq(current_frame)
         });
 
         let (step, baseline) = match self.record {

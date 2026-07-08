@@ -8,7 +8,7 @@
 | **Blocks** | referenced by 006 (Restore no-op), 019 (single-display no-op), 027 (elevated windows) |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §4 ("Stubborn windows"), §8, §11 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -67,22 +67,68 @@ Bookkeeping (required): record START now; add FINISH + DURATION; write the Imple
 do NOT git commit; refine the Suggested commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 20:46 WIB
+- **Finished:** 2026-07-08 21:04 WIB
+- **Duration:** ~18m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Made the app best-effort and honest (§4): an action that changes **nothing** now plays a soft
+system beep instead of failing silently. Pure decision logic is unit-tested; the sound sits
+behind the `Platform` boundary (macOS now, Windows stub for 027).
+
+**What changed**
+- **`core/geometry.rs`**: promoted the snap state machine's private frame-tolerance into a
+  shared `Rect::approx_eq` + `pub const MATCH_TOLERANCE` so the no-op detector reuses the exact
+  same "did the window move?" tolerance (no duplicated constant).
+- **`core/state.rs`**: now calls `Rect::approx_eq` instead of its own local copy (behaviour
+  identical; all §7 state tests unchanged).
+- **`platform/mod.rs`**:
+  - **Effect detection** — `perform` re-reads the landed frame **once** (feeding both the state
+    machine and the check) and returns `Ok(false)` when the action *intended* a move but the
+    frame didn't budge at all. A window that partially complies (clamps to min size but moves)
+    still returns `Ok(true)`. `restore` got the same treatment (immovable-restore beeps too, not
+    only the no-baseline case). The decision is a pure `is_effective(before, target, actual)` —
+    unit-tested.
+  - **`notify_no_op()`** — plays the system alert sound, **debounced** (300 ms) via a
+    `static Mutex<Option<Instant>>` so key auto-repeat produces one beep, not a burst. The sound
+    itself is behind a per-OS `beep()` (macOS → `NSBeep`; non-macOS → silent stub for 027).
+- **`platform/macos.rs`**: `pub fn beep()` calling AppKit's `NSBeep` (declared via
+  `#[link(name = "AppKit", kind = "framework")]`; AppKit is already linked for NSScreen).
+- **`lib.rs`**: `dispatch` now calls `platform::notify_no_op()` on the `Ok(false)` (total no-op)
+  arms of both `perform` and `restore`, alongside the existing log line.
+
+**Key decisions / deviations**
+- "Nothing done" = **tolerant** compare of the pre-move frame vs the re-read actual frame (reusing
+  the §7 tolerance), per the issue's recommendation — so a min-size clamp that *did* move isn't
+  falsely flagged. Beep only on **total** no-op; partials are silent.
+- `restore` also does effect detection (not just the no-baseline case) for consistency with
+  `perform` — a stubborn window that can't move back now beeps too.
+- Debounce lives inside `notify_no_op` (not the dispatcher) so every future caller is covered.
+
+**Verification**
+- `cargo test` → 63 pass (5 new `is_effective` tests: immovable no-op, partial-comply effective,
+  already-at-target silent, ordinary move, tolerance drift). `cargo clippy --all-targets` clean.
+  `cargo build` links `NSBeep` with no errors.
+- **Not run here:** the manual macOS beep smoke (snap a fixed-size / native-fullscreen window →
+  beep; normal window → silence; `⌃⌥⌫` with nothing snapped → beep) — needs the running app +
+  Accessibility grant. Flagged for the user, same as 001/020.
 
 ## Suggested commit message
 
 ```
 feat(core): soft beep when an action can do nothing
 
-Detect no-op actions by comparing requested vs re-read frame and play the
-system beep (behind the Platform boundary), with debounce. Route Restore and
-single-display display-move no-ops through it.
+Turn silent failures into a signal (§4): an action that changes nothing plays the
+system alert sound. Detect a total no-op by comparing the pre-move frame with the
+re-read landed frame (reusing the §7 snap tolerance, now shared as Rect::approx_eq)
+— a window that only partially complies (clamps to a min size but moves) does not
+beep. Restore with no baseline, an immovable restore, and a single-display display
+move all route through the beep.
+
+notify_no_op plays the sound behind the Platform boundary (macOS NSBeep; a Windows
+MessageBeep stub for issue 027) and debounces so key auto-repeat beeps once. New
+tests cover the is_effective decision (cargo test: 63).
 ```
