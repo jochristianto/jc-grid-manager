@@ -58,6 +58,12 @@ export type TunableKey = keyof Tunables;
 /** macOS Accessibility permission state for onboarding (issue 030). */
 export type AccessibilityState = "trusted" | "never_asked" | "denied";
 
+/** A platform-specific shortcut warning (Windows Ctrl+Alt conflicts, issue 027). */
+export interface PlatformNotice {
+  title: string;
+  body: string;
+}
+
 /** Emitted by the backend after any successful config change. */
 export const EVENT_BINDINGS_CHANGED = "bindings-changed";
 
@@ -119,6 +125,11 @@ export function promptAccessibility(): Promise<void> {
 /** Open System Settings → Privacy & Security → Accessibility. */
 export function openAccessibilitySettings(): Promise<void> {
   return invoke("open_accessibility_settings");
+}
+
+/** Platform-specific shortcut warnings (Windows Ctrl+Alt conflicts, issue 027). Empty off Windows. */
+export function getPlatformNotices(): Promise<PlatformNotice[]> {
+  return invoke("get_platform_notices");
 }
 
 /** Narrow an unknown `invoke` rejection to a human message. */

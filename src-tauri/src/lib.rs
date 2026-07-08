@@ -125,7 +125,8 @@ pub fn run() {
             config::toggle_ignore_current_app,
             config::get_accessibility_state,
             config::prompt_accessibility,
-            config::open_accessibility_settings
+            config::open_accessibility_settings,
+            config::get_platform_notices
         ])
         .setup(|app| {
             // Load the persisted per-machine config (or defaults on first run) and register the

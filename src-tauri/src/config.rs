@@ -22,6 +22,7 @@
 //! - `get_accessibility_state() -> "trusted" | "never_asked" | "denied"`  — macOS onboarding (030)
 //! - `prompt_accessibility() -> Result<(), BindingError>`  — pop the system prompt (030)
 //! - `open_accessibility_settings() -> Result<(), BindingError>`  — deep-link the settings pane (030)
+//! - `get_platform_notices() -> PlatformNotice[]`  — Windows Ctrl+Alt conflict warnings (027)
 //!
 //! Event: `bindings-changed` — emitted after any successful change so an open settings window
 //! can refetch. `BindingError` is `{ code, message }`; codes: `unknown-action`, `unknown-tunable`,
@@ -534,6 +535,59 @@ pub fn prompt_accessibility(
 pub fn open_accessibility_settings() -> Result<(), BindingError> {
     crate::platform::open_accessibility_settings();
     Ok(())
+}
+
+// ----- Platform shortcut notices (issue 027) -------------------------------------------------
+
+/// A platform-specific heads-up for the Shortcuts editor: the known Windows Ctrl+Alt collisions
+/// (§5.4/§11) and how to fix them. Empty off Windows.
+#[derive(Debug, Serialize)]
+pub struct PlatformNotice {
+    pub title: String,
+    pub body: String,
+}
+
+/// Platform-specific shortcut warnings for the settings UI (issue 027). On Windows, the known
+/// Ctrl+Alt conflicts with a "just rebind it here" nudge — the app keeps cross-platform parity by
+/// default (§2 muscle memory) and warns rather than shipping different Windows defaults. Empty
+/// everywhere else, so the frontend renders nothing on macOS.
+#[tauri::command]
+pub fn get_platform_notices() -> Vec<PlatformNotice> {
+    #[cfg(target_os = "windows")]
+    {
+        windows_notices()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Vec::new()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_notices() -> Vec<PlatformNotice> {
+    let notice = |title: &str, body: &str| PlatformNotice {
+        title: title.to_string(),
+        body: body.to_string(),
+    };
+    vec![
+        notice(
+            "Ctrl+Alt+Arrow may rotate your screen",
+            "On many Intel-graphics PCs, Ctrl+Alt+Arrow rotates the display and will shadow the \
+             Half shortcuts. Turn those hotkeys off in Intel Graphics Command Center \
+             (Options → Hotkeys), or rebind the halves below.",
+        ),
+        notice(
+            "Ctrl+Alt can behave as AltGr",
+            "On non-US keyboards, Ctrl+Alt+<letter> can type a character (AltGr). If a shortcut \
+             inserts text instead of snapping, rebind it below to a combo that also uses Shift or \
+             the Windows key.",
+        ),
+        notice(
+            "Display shortcuts sit next to Windows snapping",
+            "Next / Previous Display use Ctrl+Alt+Win+←/→, adjacent to Windows' own Win+←/→ \
+             snapping. They shouldn't collide, but if your setup reacts oddly, rebind them below.",
+        ),
+    ]
 }
 
 #[cfg(test)]

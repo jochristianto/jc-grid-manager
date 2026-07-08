@@ -16,6 +16,7 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, RECT, TRUE};
 use windows::Win32::Graphics::Gdi::{
     EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO,
 };
+use windows::Win32::System::Diagnostics::Debug::MessageBeep;
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
@@ -24,7 +25,7 @@ use windows::Win32::UI::HiDpi::{
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, SetWindowPos, HWND_TOP,
+    GetForegroundWindow, GetWindowRect, GetWindowThreadProcessId, SetWindowPos, HWND_TOP, MB_OK,
     SWP_NOACTIVATE, SWP_NOZORDER,
 };
 
@@ -50,6 +51,14 @@ pub fn ensure_dpi_awareness() {
             AreDpiAwarenessContextsEqual(ctx, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2).as_bool();
         println!("[jc-grid-manager] per-monitor-DPI-v2 aware: {is_v2}");
     }
+}
+
+/// Play the standard Windows alert sound. Used by [`super::notify_no_op`] to signal that an action
+/// could do nothing (idea.md §4) — including the common Windows case of an **elevated/admin window**
+/// a non-elevated app can't move: `SetWindowPos` silently no-ops there, so the 021 effect check sees
+/// no change and routes through here (issue 027). Best-effort; a failed beep is ignored.
+pub fn beep() {
+    let _ = unsafe { MessageBeep(MB_OK) };
 }
 
 /// The Windows implementation of [`Platform`]. `HWND` is a plain copyable handle, so there is no

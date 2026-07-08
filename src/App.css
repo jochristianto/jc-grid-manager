@@ -201,6 +201,28 @@ body {
   border-color: var(--accent);
 }
 
+/* Windows conflict notices (issue 027) */
+.notice {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.notice strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.notice p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
 /* Shortcut editor (issue 029) */
 .shortcuts-head {
   display: flex;

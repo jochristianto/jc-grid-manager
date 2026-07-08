@@ -181,8 +181,13 @@ fn beep() {
     macos::beep();
 }
 
-/// Windows `MessageBeep` arrives with the rest of the Windows shim (issue 027); silent until then.
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn beep() {
+    windows::beep();
+}
+
+/// No system beep on platforms without a shim (e.g. Linux dev builds).
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn beep() {}
 
 // ----- Accessibility permission (macOS onboarding, issue 030) --------------------------------

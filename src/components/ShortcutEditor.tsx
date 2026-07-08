@@ -7,12 +7,14 @@ import { useCallback, useEffect, useState } from "react";
 import {
   errorMessage,
   getBindings,
+  getPlatformNotices,
   onBindingsChanged,
   resetAllBindings,
   resetBinding,
   setBinding,
   type Bind,
   type BindingInfo,
+  type PlatformNotice,
 } from "../lib/tauriBridge";
 import { BASE_MODIFIER_LABEL, formatBind } from "../lib/format";
 
@@ -51,6 +53,7 @@ export function ShortcutEditor() {
   const [recording, setRecording] = useState<string | null>(null);
   const [rowErrors, setRowErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [notices, setNotices] = useState<PlatformNotice[]>([]);
 
   const refresh = useCallback(async () => {
     try {
@@ -69,6 +72,19 @@ export function ShortcutEditor() {
       void unlisten.then((un) => un());
     };
   }, [refresh]);
+
+  // Platform-specific conflict warnings (issue 027) — Windows only; empty elsewhere.
+  useEffect(() => {
+    let active = true;
+    getPlatformNotices()
+      .then((n) => active && setNotices(n))
+      .catch(() => {
+        /* notices are advisory; ignore fetch errors */
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const clearRowError = useCallback((action: string) => {
     setRowErrors((m) => {
@@ -146,6 +162,13 @@ export function ShortcutEditor() {
         Shift or the Command/Win key as you like. Press Esc to cancel.
       </p>
       {globalError && <p className="error">{globalError}</p>}
+
+      {notices.map((notice) => (
+        <div className="notice" key={notice.title}>
+          <strong>{notice.title}</strong>
+          <p>{notice.body}</p>
+        </div>
+      ))}
 
       {GROUPS.map((group) => (
         <div className="shortcut-group" key={group.title}>

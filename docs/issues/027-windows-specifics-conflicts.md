@@ -8,7 +8,7 @@
 | **Blocks** | — |
 | **Default shortcut** | n/a |
 | **Source** | `docs/idea.md` §4, §5.4 (Windows conflicts), §8, §11 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done (type-checked for Windows; hardware smoke + display-move decision pending) |
 
 ## Summary
 
@@ -69,22 +69,61 @@ the display-move conflict finding and the keep-vs-rebind decision); do NOT git c
 commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 22:27 WIB
+- **Finished:** 2026-07-08 22:33 WIB
+- **Duration:** ~6m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Handled the Windows rough edges: elevated/unmovable windows now beep instead of failing silently,
+and the known Ctrl+Alt conflicts are surfaced as actionable warnings in the shortcut editor.
+
+**What changed**
+- **Windows beep (`MessageBeep`)** — filled 021's Windows stub: `platform/windows.rs::beep()` →
+  `MessageBeep(MB_OK)`; `platform/mod.rs` now cfg-selects it (macOS `NSBeep` / Windows
+  `MessageBeep` / silent elsewhere). `MessageBeep` lives in
+  `Win32::System::Diagnostics::Debug` — added that windows feature.
+- **Elevated-window handling — no new detection needed.** A non-elevated app's `SetWindowPos` on
+  an admin window silently no-ops (UIPI), so `set_frame` returns `Ok` but the frame doesn't change;
+  021's existing effect check (`is_effective`) already sees "no change" → `Ok(false)` → `notify_no_op`
+  → now an audible `MessageBeep`. So implementing the beep *is* the elevated fix; documented in the
+  `beep` doc-comment. No crash (the read still works; the write just doesn't take).
+- **Ctrl+Alt conflict guidance** — new `get_platform_notices() -> PlatformNotice[]` command
+  (`config.rs`): on **Windows** returns three warnings (Intel Ctrl+Alt+Arrow screen rotation; AltGr
+  on non-US keyboards; the display-move-vs-Windows-snapping adjacency), each pointing at the fix +
+  "rebind below"; **empty on macOS**. The frontend `ShortcutEditor` (029) fetches it and renders a
+  banner above the shortcut list — so the rebind path is right there. Registered in `lib.rs`; added
+  to the IPC contract; `tauriBridge.ts` + a `.notice` style.
+
+**Key decisions / deviations — needs your confirmation**
+- **Display-move conflict (`Ctrl+Alt+Win+←/→` vs Windows `Win+←/→`): kept parity + warn**, per the
+  issue's recommendation and §2 (identical muscle memory). I did **not** change the Windows default.
+  I could not test the actual interaction on Windows hardware, so I shipped a warning (notice #3)
+  telling the user to rebind if their setup reacts oddly. **Please confirm keep-vs-rebind once you
+  can try it on Windows** — if it genuinely collides, say so and I'll ship a Windows-specific default
+  or a stronger nudge.
+
+**Verification** (macOS dev box)
+- `MessageBeep` API cross-checked in the isolated crate (`cargo check --target
+  x86_64-pc-windows-msvc` → clean). `windows.rs` + `config.rs` type-check cleanly for the Windows
+  target (via the temporary `build.rs` no-op; `build.rs` unchanged in the commit).
+- macOS: `cargo test` 68 pass, `cargo clippy --all-targets` clean. Frontend: `tsc` clean,
+  `vite build` OK.
+- **Not run here (needs Windows):** snap an elevated Terminal → single beep, no crash; confirm the
+  notices banner renders; observe the `Ctrl+Alt+Win+←/→` interaction with Windows snapping. Flagged.
 
 ## Suggested commit message
 
 ```
 feat(windows): beep on elevated windows and warn on Ctrl+Alt conflicts
 
-Detect unmovable/elevated windows and route them through the soft beep
-(MessageBeep); surface actionable guidance for Intel screen-rotation and AltGr
-conflicts with a rebind path; document the display-move shortcut conflict.
+Fill 021's Windows beep stub with MessageBeep, so an elevated window that silently
+refuses SetWindowPos (caught by 021's effect check) now beeps instead of failing
+quietly. Add get_platform_notices: on Windows it returns the known Ctrl+Alt
+conflicts (Intel screen rotation, AltGr, display-move vs Win+Arrow snapping) with
+a rebind nudge, rendered as a banner in the shortcut editor; empty on macOS. Keeps
+cross-platform default parity (§2). Cross-checked for x86_64-pc-windows-msvc; the
+elevated-window + conflict smoke needs a Windows machine.
 ```
