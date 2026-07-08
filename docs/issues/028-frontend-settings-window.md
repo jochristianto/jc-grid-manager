@@ -8,7 +8,7 @@
 | **Blocks** | 029 (shortcut editor lives inside this shell), 030 (onboarding is reachable from here) |
 | **Default shortcut** | n/a (opened from the tray "Settings…" — 024) |
 | **Source** | `docs/idea.md` §5.2, §6 |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -74,21 +74,64 @@ Bookkeeping (required): record START now; add FINISH + DURATION; write the Imple
 do NOT git commit; refine the Suggested commit message; the user commits.
 ```
 
-## Implementation log (fill this in)
+## Implementation log
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 21:38 WIB
+- **Finished:** 2026-07-08 21:50 WIB
+- **Duration:** ~12m hands-on (excludes reading/design)
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Replaced the Tauri+React starter with a real Settings window: state-based tab nav for **Shortcuts
+/ General / About**, all backend access funneled through one typed bridge.
+
+**What changed** (frontend only — no `src-tauri/**` touched)
+- **`src/lib/tauriBridge.ts`** — typed wrappers for the whole IPC contract (020/022/023):
+  `Config`, `Bind`, `Tunables`, `BindingInfo`, `IgnoreStatus`, `BindingError` types +
+  `getConfig`/`getBindings`/`setBinding`/`resetBinding`/`resetAllBindings`/`setTunable`/
+  `getAutostart`/`setAutostart`/`getFrontmostApp`/`toggleIgnoreCurrentApp`, an
+  `onBindingsChanged` subscription, and an `errorMessage` helper. No component calls `invoke`
+  directly. Field names/shapes verified against `src-tauri/src/config.rs` (e.g. `Bind` uses the
+  `super` key from `BindRepr`; `Tunables` = `almost_maximize_factor`/`resize_step`/`min_size`).
+- **`src/components/SettingsWindow.tsx`** — the shell: sidebar tabs, client-side routing by
+  `useState`. About uses `@tauri-apps/api/app` `getVersion` + the opener plugin (`openUrl`) and
+  notes the unsigned build + Accessibility requirement. Shortcuts is a labelled placeholder for
+  029.
+- **`src/components/GeneralSection.tsx`** — launch-at-login checkbox (`get/set_autostart`,
+  optimistic with rollback) and three tunable sliders (`set_tunable`, committed on release, resynced
+  from `getConfig` if the backend rejects). Slider ranges stay inside the backend's accepted bounds.
+- **`src/App.tsx`** now just renders `<SettingsWindow/>`; **`src/App.css`** rewritten as a
+  lightweight, native-feeling theme that follows OS light/dark via `prefers-color-scheme`;
+  **`index.html`** title updated. (Greet demo + logos gone.)
+
+**Key decisions / deviations**
+- **State tabs, no router**, and **no UI kit** — per the issue's recommendations (lightweight, §2).
+- Default tab is **General** (functional today) rather than the Shortcuts placeholder.
+- Tunables are **sliders committed on `pointerup`/`keyup`**, not per-keystroke number inputs, so a
+  half-typed value never hits `set_tunable` (which would reject and flicker).
+- Kept `ignore_apps` / the ignore commands in the bridge (for 022/settings later) even though this
+  screen doesn't surface them yet — the bridge is the shared module for all frontend slices.
+
+**Verification**
+- `pnpm exec tsc --noEmit` → clean (strict, `noUnusedLocals`/`noUnusedParameters`).
+  `pnpm run build` (`tsc && vite build`) → built, 38 modules, `dist/` (gitignored).
+- **Rendered it headlessly** (vite dev @ :1420, gstack browse): shell mounts with **no console
+  errors**; the three tabs switch correctly; **About** shows name / version / unsigned-build note /
+  GitHub link; **Shortcuts** shows its placeholder. **General** stays on "Loading…" in a plain
+  browser only because `invoke` has no Tauri backend there — expected; it loads under `tauri dev`.
+- **Not run here:** the live `tauri dev` smoke (open Settings from the tray → General reads real
+  state; toggle launch-at-login → verify via 023; change a tunable → reopen and confirm it
+  persists). Needs the running app; flagged for the user.
 
 ## Suggested commit message
 
 ```
 feat(ui): add Settings window shell with tabbed navigation
 
-Replace the starter page with Shortcuts/General/About sections and a typed
-tauriBridge; General wires launch-at-login and tunables to the backend.
+Replace the Tauri+React starter with a Settings window: state-based Shortcuts /
+General / About tabs, following the OS light/dark theme. Route every backend call
+through a new typed src/lib/tauriBridge.ts (the 020/022/023 IPC contract); no raw
+invoke in components. General wires launch-at-login and the sizing tunables to the
+backend; About shows name/version and notes the unsigned build. Shortcuts is a
+placeholder for 029. tsc + vite build clean; shell verified headlessly.
 ```
