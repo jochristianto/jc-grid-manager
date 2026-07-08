@@ -8,7 +8,7 @@
 | **Blocks** | surfaced in tray menu (024) |
 | **Default shortcut** | First `⌃⌥D`, Center `⌃⌥F`, Last `⌃⌥G` |
 | **Source** | `docs/idea.md` §4 (Thirds) |
-| **Status** | ☐ Not started |
+| **Status** | ☑ Done |
 
 ## Summary
 
@@ -58,13 +58,16 @@ do NOT git commit; refine the Suggested commit message; the user commits.
 
 ## Implementation log (fill this in)
 
-- **Started:** _<!-- -->_
-- **Finished:** _<!-- -->_
-- **Duration:** _<!-- -->_
+- **Started:** 2026-07-08 18:24 WIB
+- **Finished:** 2026-07-08 18:27 WIB
+- **Duration:** ~3m
 
-## Implementation summary (fill this in)
+## Implementation summary
 
-_<!-- ... -->_
+Added three `target_for` arms: FirstThird `(0,0,1/3,1)`, CenterThird `(1/3,0,1/3,1)`, LastThird
+`(2/3,0,1/3,1)` — direct full-height columns. Binds `⌃⌥D/F/G` (from 004) are now functional. Unit
+test verifies the three columns tile the width exactly (work width 900 → 300 each). `cargo test`
+→ 32 pass.
 
 ## Suggested commit message
 

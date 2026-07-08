@@ -109,6 +109,10 @@ pub fn target_for(
         }
         // Center Half — centered half-width, full-height column (issue 007).
         CenterHalf => Some(fraction_to_rect(work, (0.25, 0.0, 0.5, 1.0))),
+        // Thirds — direct full-height columns (issue 008).
+        FirstThird => Some(fraction_to_rect(work, (0.0, 0.0, 1.0 / 3.0, 1.0))),
+        CenterThird => Some(fraction_to_rect(work, (1.0 / 3.0, 0.0, 1.0 / 3.0, 1.0))),
+        LastThird => Some(fraction_to_rect(work, (2.0 / 3.0, 0.0, 1.0 / 3.0, 1.0))),
         _ => None,
     }
 }
@@ -219,6 +223,16 @@ mod tests {
     #[test]
     fn target_for_unimplemented_action_is_none() {
         let work = Rect::new(0.0, 0.0, 1000.0, 800.0);
-        assert_eq!(target_for(Action::Maximize, 0, Rect::ZERO, work, &[]), None);
+        // AlmostMaximize stays menu-only-unimplemented until issue 012.
+        assert_eq!(target_for(Action::AlmostMaximize, 0, Rect::ZERO, work, &[]), None);
+    }
+
+    #[test]
+    fn target_for_thirds_tile_full_width() {
+        let work = Rect::new(0.0, 0.0, 900.0, 600.0);
+        let f = |a| target_for(a, 0, Rect::ZERO, work, &[]).unwrap();
+        assert_eq!(f(Action::FirstThird), Rect::new(0.0, 0.0, 300.0, 600.0));
+        assert_eq!(f(Action::CenterThird), Rect::new(300.0, 0.0, 300.0, 600.0));
+        assert_eq!(f(Action::LastThird), Rect::new(600.0, 0.0, 300.0, 600.0));
     }
 }
