@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "JC Grid Manager",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.jochristianto.jcgridmanager",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -25,7 +25,11 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg", "msi"],
+    "targets": [
+      "app",
+      "dmg",
+      "msi"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
