@@ -1,6 +1,6 @@
 [package]
 name = "jc-grid-manager"
-version = "0.2.0" # x-release-please-version
+version = "0.2.0"
 description = "A native menu-bar / system-tray window manager for macOS and Windows."
 authors = ["Jonathan Christianto"]
 edition = "2021"
