@@ -134,6 +134,44 @@ with your dev certificate.
 > v1 ships **unsigned** — no paid Apple Developer ID / notarization and no Windows Authenticode. Both
 > OSes show a one-time "unknown developer" warning on first launch; there is no auto-updater.
 
+## Troubleshooting
+
+### Windows: `linking with link.exe failed`
+
+If `pnpm tauri dev` (or `pnpm tauri build`) fails while linking the Rust core, with errors like:
+
+```text
+error: linking with `link.exe` failed: exit code: 1
+  = note: link: extra operand '...rcgu.o'
+          Try 'link --help' for more information.
+```
+
+Rust is invoking the **wrong `link.exe`**. The `msvc` toolchain links with Microsoft's `link.exe`,
+but a `link.exe` from **Git for Windows** (`C:\Program Files\Git\usr\bin\link.exe` — actually the GNU
+coreutils hard-link tool) is on `PATH` ahead of it. The tell-tale `link: extra operand … Try 'link
+--help'` message comes from that tool, not the MSVC linker.
+
+This happens when the shell has no MSVC environment loaded and Rust can't auto-locate the linker —
+often because the Visual Studio Build Tools install metadata is broken, so `vswhere` reports no
+installation. Fix it either way:
+
+**Quick (per session)** — run from the **x64 Native Tools Command Prompt for VS 2022**, or load the
+MSVC environment into your current shell first:
+
+```powershell
+cmd /k '"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat" && pnpm tauri dev'
+```
+
+**Permanent (recommended)** — open the **Visual Studio Installer → Build Tools 2022 → Repair**,
+keeping the **Desktop development with C++** workload checked. This regenerates the install metadata
+so Rust auto-detects `link.exe` in any terminal. Verify with:
+
+```powershell
+& "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+```
+
+It should print the install path instead of nothing.
+
 ## Releasing (manual)
 
 There's no CI — releases are cut by hand. The automated GitHub Actions build was removed because
