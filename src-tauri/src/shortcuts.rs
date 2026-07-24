@@ -145,7 +145,37 @@ fn key_symbol(code: Code) -> String {
 }
 
 /// The idea.md §4 default binding for `action`, or `None` for menu-only actions.
+///
+/// The scheme is shared cross-platform for muscle-memory parity (§2), with a Windows twist:
+/// **every Windows default gains Shift**, so the base chord is Ctrl+Alt+Shift rather than the
+/// macOS Control+Option. Bare Ctrl+Alt is AltGr on non-US layouts and is heavily squatted on
+/// Windows — Intel graphics rotate the screen on Ctrl+Alt+Arrow, and third-party tools grab
+/// Ctrl+Alt+<letter> (e.g. a "new desktop" bind on Ctrl+Alt+D) — so Shift keeps the defaults clear
+/// of those (issue 027).
+///
+/// Three actions reuse the arrow keys and were kept distinct from the Halves by an extra modifier
+/// (Next/Previous Display via Super, Maximize Height via Shift). Once Shift is folded into the
+/// base chord, keeping them distinct would need the Windows key on top — a five-key combo — so on
+/// Windows they ship **unbound**: reachable from the tray menu and rebindable (issue 020), just
+/// without a default shortcut.
+///
+/// [`Bind`]/[`Bind::to_shortcut`] are untouched — `base_modifier` is still Ctrl+Alt on every
+/// platform and the Windows Shift rides along as an ordinary `extra` — so display, recording, and
+/// conflict validation need no platform branches; only the *default data* differs here.
 pub fn default_bind(action: Action) -> Option<Bind> {
+    let bind = canonical_bind(action)?;
+    #[cfg(target_os = "windows")]
+    {
+        windows_default(action, bind)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Some(bind)
+    }
+}
+
+/// The canonical (macOS) default scheme (§4). Windows layers Shift on top — see [`default_bind`].
+fn canonical_bind(action: Action) -> Option<Bind> {
     use Action::*;
     match action {
         // Halves — cycle ½→⅔→⅓ (state machine, issue 005)
@@ -181,6 +211,26 @@ pub fn default_bind(action: Action) -> Option<Bind> {
     }
 }
 
+/// The Windows adjustment to a canonical bind (see [`default_bind`]): the three arrow-reuse binds
+/// ship unbound (they'd otherwise need a five-key combo); every other default folds Shift into the
+/// base chord so none is a bare Ctrl+Alt combo.
+#[cfg(target_os = "windows")]
+fn windows_default(action: Action, bind: Bind) -> Option<Bind> {
+    use Action::*;
+    if matches!(action, NextDisplay | PreviousDisplay | MaximizeHeight) {
+        return None;
+    }
+    let mut extra = bind.extra;
+    if bind.base_modifier {
+        extra |= Modifiers::SHIFT;
+    }
+    Some(Bind {
+        base_modifier: bind.base_modifier,
+        extra,
+        code: bind.code,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -201,55 +251,105 @@ mod tests {
             .to_shortcut()
     }
 
+    /// The base chord's modifiers for the target OS: Ctrl+Alt everywhere, plus Shift on Windows
+    /// (§4 / issue 027). The value tests below derive their expectations from this so they hold on
+    /// both platforms.
+    fn base_mods() -> Modifiers {
+        #[cfg(target_os = "windows")]
+        {
+            Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Modifiers::CONTROL | Modifiers::ALT
+        }
+    }
+
     #[test]
-    fn base_modifier_is_control_alt() {
-        // ⌃⌥←
+    fn base_modifier_matches_platform() {
+        // ⌃⌥← on macOS; ⌃⌥⇧← on Windows.
         assert_eq!(
             shortcut_of(Action::LeftHalf),
-            Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::ArrowLeft)
+            Shortcut::new(Some(base_mods()), Code::ArrowLeft)
         );
     }
 
     #[test]
-    fn maximize_is_control_alt_enter() {
-        // ⌃⌥↩
+    fn maximize_is_base_enter() {
+        // ⌃⌥↩ on macOS; ⌃⌥⇧↩ on Windows.
         assert_eq!(
             shortcut_of(Action::Maximize),
-            Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Enter)
+            Shortcut::new(Some(base_mods()), Code::Enter)
         );
     }
 
     #[test]
-    fn maximize_height_adds_shift() {
-        // ⌃⌥⇧↑
-        assert_eq!(
-            shortcut_of(Action::MaximizeHeight),
-            Shortcut::new(
-                Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SHIFT),
-                Code::ArrowUp
-            )
-        );
+    fn maximize_height_default() {
+        // macOS: Shift sets it apart from Top Half (⌃⌥⇧↑). Windows: with Shift in the base it
+        // would need the Windows key too (a five-key combo), so it ships unbound instead.
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mh = shortcut_of(Action::MaximizeHeight);
+            assert_ne!(mh, shortcut_of(Action::TopHalf));
+            assert_eq!(
+                mh,
+                Shortcut::new(Some(base_mods() | Modifiers::SHIFT), Code::ArrowUp)
+            );
+        }
+        #[cfg(target_os = "windows")]
+        assert_eq!(default_bind(Action::MaximizeHeight), None);
     }
 
     #[test]
-    fn display_move_adds_super() {
-        // ⌃⌥⌘→
+    fn display_move_default() {
+        // macOS: base + Super (⌃⌥⌘→). Windows: unbound (a distinct default would be a five-key
+        // combo), so both displays default to no shortcut.
+        #[cfg(not(target_os = "windows"))]
         assert_eq!(
             shortcut_of(Action::NextDisplay),
-            Shortcut::new(
-                Some(Modifiers::CONTROL | Modifiers::ALT | Modifiers::SUPER),
-                Code::ArrowRight
-            )
+            Shortcut::new(Some(base_mods() | Modifiers::SUPER), Code::ArrowRight)
         );
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(default_bind(Action::NextDisplay), None);
+            assert_eq!(default_bind(Action::PreviousDisplay), None);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_defaults_use_ctrl_alt_shift() {
+        use Action::*;
+        // Every bound Windows default is a Ctrl+Alt+Shift chord — no bare Ctrl+Alt survives.
+        for action in Action::ALL {
+            if let Some(bind) = default_bind(action) {
+                assert!(
+                    bind.base_modifier && bind.extra.contains(Modifiers::SHIFT),
+                    "{action:?} should carry Ctrl+Alt+Shift on Windows"
+                );
+            }
+        }
+        // The arrow-reuse binds ship unbound rather than as five-key combos.
+        assert_eq!(default_bind(NextDisplay), None);
+        assert_eq!(default_bind(PreviousDisplay), None);
+        assert_eq!(default_bind(MaximizeHeight), None);
     }
 
     #[test]
     fn hint_renders_macos_symbols_in_order() {
-        assert_eq!(default_bind(Action::LeftHalf).unwrap().hint(), "⌃⌥←");
-        assert_eq!(default_bind(Action::Maximize).unwrap().hint(), "⌃⌥↩");
-        assert_eq!(default_bind(Action::MaximizeHeight).unwrap().hint(), "⌃⌥⇧↑");
-        assert_eq!(default_bind(Action::NextDisplay).unwrap().hint(), "⌃⌥⌘→");
-        assert_eq!(default_bind(Action::TopLeft).unwrap().hint(), "⌃⌥U");
+        // hint() always renders the macOS glyphs regardless of OS, so construct the chords
+        // directly — decoupled from the (platform-varying) default scheme.
+        assert_eq!(Bind::base(Code::ArrowLeft).hint(), "⌃⌥←");
+        assert_eq!(Bind::base(Code::Enter).hint(), "⌃⌥↩");
+        assert_eq!(
+            Bind::base_with(Modifiers::SHIFT, Code::ArrowUp).hint(),
+            "⌃⌥⇧↑"
+        );
+        assert_eq!(
+            Bind::base_with(Modifiers::SUPER, Code::ArrowRight).hint(),
+            "⌃⌥⌘→"
+        );
+        assert_eq!(Bind::base(Code::KeyU).hint(), "⌃⌥U");
     }
 
     #[test]
@@ -262,7 +362,7 @@ mod tests {
 
     #[test]
     fn bind_serializes_to_stable_hand_editable_json() {
-        let bind = default_bind(Action::NextDisplay).unwrap(); // base + Super + ArrowRight
+        let bind = Bind::base_with(Modifiers::SUPER, Code::ArrowRight); // base + Super + ArrowRight
         let json = serde_json::to_value(bind).unwrap();
         assert_eq!(json["base_modifier"], true);
         assert_eq!(json["super"], true);

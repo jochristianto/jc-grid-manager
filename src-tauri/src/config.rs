@@ -539,18 +539,19 @@ pub fn open_accessibility_settings() -> Result<(), BindingError> {
 
 // ----- Platform shortcut notices (issue 027) -------------------------------------------------
 
-/// A platform-specific heads-up for the Shortcuts editor: the known Windows Ctrl+Alt collisions
-/// (§5.4/§11) and how to fix them. Empty off Windows.
+/// A platform-specific heads-up for the Shortcuts editor: why the Windows defaults differ and
+/// which actions ship unbound there (§5.4/§11). Empty off Windows.
 #[derive(Debug, Serialize)]
 pub struct PlatformNotice {
     pub title: String,
     pub body: String,
 }
 
-/// Platform-specific shortcut warnings for the settings UI (issue 027). On Windows, the known
-/// Ctrl+Alt conflicts with a "just rebind it here" nudge — the app keeps cross-platform parity by
-/// default (§2 muscle memory) and warns rather than shipping different Windows defaults. Empty
-/// everywhere else, so the frontend renders nothing on macOS.
+/// Platform-specific shortcut notices for the settings UI (issue 027). On Windows: the defaults
+/// use a Ctrl+Alt+Shift base (see [`crate::shortcuts::default_bind`]) to dodge the bare-Ctrl+Alt
+/// AltGr / Intel-rotation traps, so these explain that choice and note that the arrow-reuse binds
+/// (Displays, Maximize Height) ship unbound — each with a "record it here" nudge. Empty everywhere
+/// else, so the frontend renders nothing on macOS.
 #[tauri::command]
 pub fn get_platform_notices() -> Vec<PlatformNotice> {
     #[cfg(target_os = "windows")]
@@ -571,21 +572,18 @@ fn windows_notices() -> Vec<PlatformNotice> {
     };
     vec![
         notice(
-            "Ctrl+Alt+Arrow may rotate your screen",
-            "On many Intel-graphics PCs, Ctrl+Alt+Arrow rotates the display and will shadow the \
-             Half shortcuts. Turn those hotkeys off in Intel Graphics Command Center \
-             (Options → Hotkeys), or rebind the halves below.",
+            "Windows shortcuts use Ctrl+Alt+Shift",
+            "On Windows the defaults add Shift to the macOS Control+Option base. Bare Ctrl+Alt is \
+             AltGr on some keyboards (it can type a character instead of snapping) and \
+             Ctrl+Alt+Arrow rotates the screen on many Intel-graphics PCs — the extra Shift keeps \
+             the defaults clear of both. If you rebind to a bare Ctrl+Alt combo and it misbehaves, \
+             add Shift or the Windows key.",
         ),
         notice(
-            "Ctrl+Alt can behave as AltGr",
-            "On non-US keyboards, Ctrl+Alt+<letter> can type a character (AltGr). If a shortcut \
-             inserts text instead of snapping, rebind it below to a combo that also uses Shift or \
-             the Windows key.",
-        ),
-        notice(
-            "Display shortcuts sit next to Windows snapping",
-            "Next / Previous Display use Ctrl+Alt+Win+←/→, adjacent to Windows' own Win+←/→ \
-             snapping. They shouldn't collide, but if your setup reacts oddly, rebind them below.",
+            "Next / Previous Display and Maximize Height are unbound",
+            "These reuse the arrow keys, so with Shift in the base chord a distinct default would \
+             also need the Windows key — a five-key combo. They ship with no Windows shortcut \
+             instead: run them from the tray menu, or record a combo of your choice below.",
         ),
     ]
 }

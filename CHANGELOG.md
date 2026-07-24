@@ -1,5 +1,12 @@
 # Changelog
 
+## [Unreleased]
+
+
+### Bug Fixes
+
+* **windows:** default shortcuts now use a Ctrl+Alt+Shift base so they no longer collide with AltGr, Intel screen-rotation hotkeys, or third-party Ctrl+Alt binds (e.g. a "new desktop" grab on Ctrl+Alt+D); Next/Previous Display and Maximize Height ship unbound on Windows (tray-reachable, rebindable) to avoid five-key combos
+
 ## [0.2.0](https://github.com/jochristianto/jc-grid-manager/compare/v0.1.0...v0.2.0) (2026-07-08)
 
 

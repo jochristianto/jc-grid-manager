@@ -24,17 +24,20 @@ not a drag-into-zones tool like PowerToys FancyZones.
 
 ## Default shortcuts
 
-Global shortcuts are identical across platforms; only the base modifier differs:
-**Control + Option on macOS ↔ Ctrl + Alt on Windows**. `⌘` (Command) maps to the **Windows key**.
+Global shortcuts mirror each other across platforms, with two Windows differences: the base
+modifier is **Ctrl + Alt + Shift** rather than macOS's **Control + Option** (Shift dodges Windows'
+AltGr and Intel screen-rotation hotkeys), and the arrow-reusing binds — Displays and Maximize
+Height — ship **unbound** on Windows to avoid five-key combos (run them from the tray, or bind your
+own). `⌘` (Command) maps to the **Windows key**.
 
 | Action | macOS | Windows |
 | --- | --- | --- |
-| Left / Right / Top / Bottom Half | `⌃⌥` + arrow | `Ctrl+Alt` + arrow |
-| Corners (quarters) | `⌃⌥` U / I / J / K | `Ctrl+Alt` U / I / J / K |
-| Thirds | `⌃⌥` D / F / G (+ E / T) | `Ctrl+Alt` D / F / G (+ E / T) |
-| Maximize | `⌃⌥↩` | `Ctrl+Alt+Enter` |
-| Center / Restore | `⌃⌥C` / `⌃⌥⌫` | `Ctrl+Alt+C` / `Ctrl+Alt+Backspace` |
-| Next / Previous Display | `⌃⌥⌘←/→` | `Ctrl+Alt+Win+←/→` |
+| Left / Right / Top / Bottom Half | `⌃⌥` + arrow | `Ctrl+Alt+Shift` + arrow |
+| Corners (quarters) | `⌃⌥` U / I / J / K | `Ctrl+Alt+Shift` U / I / J / K |
+| Thirds | `⌃⌥` D / F / G (+ E / T) | `Ctrl+Alt+Shift` D / F / G (+ E / T) |
+| Maximize | `⌃⌥↩` | `Ctrl+Alt+Shift+Enter` |
+| Center / Restore | `⌃⌥C` / `⌃⌥⌫` | `Ctrl+Alt+Shift+C` / `Ctrl+Alt+Shift+Backspace` |
+| Next / Previous Display | `⌃⌥⌘←/→` | _unbound — bind your own_ |
 
 The full table (including fourths, sixths, move-to-edge, and sizing tunables) lives in
 [`docs/idea.md` §4](docs/idea.md). Rebind anything from the **Shortcuts** tab in Settings.
