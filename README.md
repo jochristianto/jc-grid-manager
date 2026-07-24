@@ -1,5 +1,7 @@
 # JC Grid Manager
 
+![JC Grid Manager Shortcuts settings](docs/images/preview.png)
+
 A personal, native **menu-bar / system-tray** window manager for **macOS and Windows** that snaps,
 resizes, and repositions windows with global keyboard shortcuts.
 
